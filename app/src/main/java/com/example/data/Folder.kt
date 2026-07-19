@@ -9,5 +9,11 @@ data class Folder(
     val name: String,
     val colorHex: String,
     val iconName: String,
+    val isSmart: Boolean = false,
+    val defaultStepSize: Int = 1,
+    val defaultResetValue: Int = 0,
+    val defaultTargetValue: Int? = null,
+    val defaultQuickButtons: String = "",
+    val historyDividerThreshold: Float = 0f,
     val createdAt: Long = System.currentTimeMillis()
 )

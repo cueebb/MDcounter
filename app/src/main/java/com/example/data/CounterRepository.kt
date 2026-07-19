@@ -13,6 +13,9 @@ class CounterRepository(private val counterDao: CounterDao) {
     fun getLogsForCounter(counterId: Long): Flow<List<CounterLog>> =
         counterDao.getLogsForCounter(counterId)
 
+    fun getLogsForCounters(counterIds: List<Long>): Flow<List<CounterLog>> =
+        counterDao.getLogsForCounters(counterIds)
+
     fun getCounterFlowById(id: Long): Flow<Counter?> =
         counterDao.getCounterFlowById(id)
 

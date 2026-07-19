@@ -46,15 +46,70 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
         return repository.getLogsForCounter(counterId)
     }
 
+    fun getLogsForCounters(counterIds: List<Long>): Flow<List<CounterLog>> {
+        return repository.getLogsForCounters(counterIds)
+    }
+
     // Folder Actions
-    fun createFolder(name: String, colorHex: String, iconName: String) {
+    fun createFolder(
+        name: String,
+        colorHex: String,
+        iconName: String,
+        isSmart: Boolean = false,
+        defaultStepSize: Int = 1,
+        defaultResetValue: Int = 0,
+        defaultTargetValue: Int? = null,
+        defaultQuickButtons: String = "",
+        historyDividerThreshold: Float = 0f
+    ) {
         viewModelScope.launch {
-            repository.insertFolder(Folder(name = name, colorHex = colorHex, iconName = iconName))
+            repository.insertFolder(
+                Folder(
+                    name = name,
+                    colorHex = colorHex,
+                    iconName = iconName,
+                    isSmart = isSmart,
+                    defaultStepSize = defaultStepSize,
+                    defaultResetValue = defaultResetValue,
+                    defaultTargetValue = defaultTargetValue,
+                    defaultQuickButtons = defaultQuickButtons,
+                    historyDividerThreshold = historyDividerThreshold
+                )
+            )
         }
     }
 
     fun updateFolder(folder: Folder) {
         viewModelScope.launch {
+            val oldFolder = db.counterDao().getFolderById(folder.id)
+            if (oldFolder != null && oldFolder.isSmart) {
+                val countersInFolder = db.counterDao().getCountersByFolder(folder.id).first()
+                for (counter in countersInFolder) {
+                    var updatedCounter = counter
+                    var modified = false
+                    
+                    if (counter.stepSize == oldFolder.defaultStepSize) {
+                        updatedCounter = updatedCounter.copy(stepSize = folder.defaultStepSize)
+                        modified = true
+                    }
+                    if (counter.resetValue == oldFolder.defaultResetValue) {
+                        updatedCounter = updatedCounter.copy(resetValue = folder.defaultResetValue)
+                        modified = true
+                    }
+                    if (counter.targetValue == oldFolder.defaultTargetValue) {
+                        updatedCounter = updatedCounter.copy(targetValue = folder.defaultTargetValue)
+                        modified = true
+                    }
+                    if (counter.quickButtons == oldFolder.defaultQuickButtons) {
+                        updatedCounter = updatedCounter.copy(quickButtons = folder.defaultQuickButtons)
+                        modified = true
+                    }
+                    
+                    if (modified) {
+                        db.counterDao().updateCounter(updatedCounter.copy(lastModified = System.currentTimeMillis()))
+                    }
+                }
+            }
             repository.updateFolder(folder)
         }
     }
@@ -78,7 +133,8 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
         resetValue: Int,
         colorHex: String,
         note: String,
-        quickButtons: String
+        quickButtons: String,
+        historyDividerThreshold: Float = 0f
     ) {
         viewModelScope.launch {
             val counter = Counter(
@@ -91,7 +147,8 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
                 resetValue = resetValue,
                 colorHex = colorHex,
                 note = note,
-                quickButtons = quickButtons
+                quickButtons = quickButtons,
+                historyDividerThreshold = historyDividerThreshold
             )
             val newId = repository.insertCounter(counter)
             // Create initial creation log
@@ -99,6 +156,31 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
                 counter = counter.copy(id = newId),
                 amount = 0,
                 logNote = "Created counter with initial value $initialValue"
+            )
+        }
+    }
+
+    fun duplicateCounter(counter: Counter) {
+        viewModelScope.launch {
+            val duplicated = Counter(
+                folderId = counter.folderId,
+                name = "${counter.name} (Copy)",
+                currentValue = counter.currentValue,
+                initialValue = counter.initialValue,
+                stepSize = counter.stepSize,
+                targetValue = counter.targetValue,
+                resetValue = counter.resetValue,
+                colorHex = counter.colorHex,
+                note = counter.note,
+                quickButtons = counter.quickButtons,
+                historyDividerThreshold = counter.historyDividerThreshold
+            )
+            val newId = repository.insertCounter(duplicated)
+            // Create initial creation log
+            repository.incrementCounter(
+                counter = duplicated.copy(id = newId),
+                amount = 0,
+                logNote = "Duplicated from '${counter.name}' with value ${counter.currentValue}"
             )
         }
     }
@@ -132,6 +214,39 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
     fun reset(counter: Counter) {
         viewModelScope.launch {
             repository.resetCounter(counter)
+        }
+    }
+
+    fun insertManualDivider(counterId: Long, isGlobal: Boolean) {
+        viewModelScope.launch {
+            val counter = db.counterDao().getCounterById(counterId)
+            val currentVal = counter?.currentValue ?: 0
+            val log = CounterLog(
+                counterId = counterId,
+                previousValue = currentVal,
+                newValue = currentVal,
+                changeValue = 0,
+                note = if (isGlobal) "[MANUAL_DIVIDER_GLOBAL]" else "[MANUAL_DIVIDER_LOCAL]",
+                timestamp = System.currentTimeMillis()
+            )
+            db.counterDao().insertLog(log)
+        }
+    }
+
+    fun insertGlobalDivider(allCounters: List<Counter>) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            allCounters.forEach { counter ->
+                val log = CounterLog(
+                    counterId = counter.id,
+                    previousValue = counter.currentValue,
+                    newValue = counter.currentValue,
+                    changeValue = 0,
+                    note = "[MANUAL_DIVIDER_GLOBAL]",
+                    timestamp = now
+                )
+                db.counterDao().insertLog(log)
+            }
         }
     }
 }

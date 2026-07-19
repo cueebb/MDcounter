@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -175,9 +177,71 @@ fun CounterAppScreen(
     var counterToEdit by remember { mutableStateOf<Counter?>(null) }
     var counterForLogs by remember { mutableStateOf<Counter?>(null) }
     var qolAdjustCounterData by remember { mutableStateOf<Pair<Counter, Boolean>?>(null) }
+    var historyViewTarget by remember { mutableStateOf<Pair<Counter?, Folder?>?>(null) }
 
     var showMoreDropdown by remember { mutableStateOf(false) }
     var showInfoDropdown by remember { mutableStateOf(false) }
+
+    var showSortDialog by remember { mutableStateOf(false) }
+    var selectedSortParam by remember { mutableStateOf<String?>(null) } // "quantity", "createdAt", "lastModified", "name"
+    var isReverseSort by remember { mutableStateOf(false) } // default false (biggest to least)
+    var isAutosortEnabled by remember { mutableStateOf(false) }
+    var autosortIntervalSeconds by remember { mutableStateOf(5) }
+    var manualOrderIds by remember { mutableStateOf<List<Long>?>(null) }
+
+    // Helper to calculate sorted IDs
+    val performSort: (String, Boolean) -> Unit = { param, reverse ->
+        val sorted = when (param) {
+            "quantity" -> {
+                if (reverse) counters.sortedBy { it.currentValue }
+                else counters.sortedByDescending { it.currentValue }
+            }
+            "createdAt" -> {
+                if (reverse) counters.sortedBy { it.createdAt }
+                else counters.sortedByDescending { it.createdAt }
+            }
+            "lastModified" -> {
+                if (reverse) counters.sortedBy { it.lastModified }
+                else counters.sortedByDescending { it.lastModified }
+            }
+            "name" -> {
+                if (reverse) counters.sortedBy { it.name.lowercase() }
+                else counters.sortedByDescending { it.name.lowercase() }
+            }
+            else -> counters
+        }
+        manualOrderIds = sorted.map { it.id }
+    }
+
+    // Reset sort when folder changes
+    LaunchedEffect(selectedFolderId) {
+        selectedSortParam = null
+        isReverseSort = false
+        isAutosortEnabled = false
+        manualOrderIds = null
+    }
+
+    // Autosort periodic triggers
+    LaunchedEffect(isAutosortEnabled, autosortIntervalSeconds, selectedSortParam, isReverseSort, counters) {
+        if (isAutosortEnabled && selectedSortParam != null) {
+            while (true) {
+                performSort(selectedSortParam!!, isReverseSort)
+                kotlinx.coroutines.delay(autosortIntervalSeconds * 1000L)
+            }
+        }
+    }
+
+    // List of counters to display
+    val displayedCounters = remember(counters, manualOrderIds) {
+        if (manualOrderIds == null) {
+            counters
+        } else {
+            val counterMap = counters.associateBy { it.id }
+            val ordered = manualOrderIds!!.mapNotNull { counterMap[it] }
+            val missing = counters.filter { it.id !in counterMap }
+            ordered + missing
+        }
+    }
 
     val context = LocalContext.current
 
@@ -198,8 +262,8 @@ fun CounterAppScreen(
             folders = folders,
             preselectedFolderId = selectedFolderId,
             onDismiss = { showAddCounterDialog = false },
-            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons ->
-                viewModel.createCounter(name, folderId, initVal, step, target, reset, color, note, quickButtons)
+            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons, thresh ->
+                viewModel.createCounter(name, folderId, initVal, step, target, reset, color, note, quickButtons, thresh)
                 showAddCounterDialog = false
             }
         )
@@ -213,7 +277,7 @@ fun CounterAppScreen(
             folders = folders,
             preselectedFolderId = counter.folderId,
             onDismiss = { counterToEdit = null },
-            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons ->
+            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons, thresh ->
                 viewModel.updateCounter(
                     counter.copy(
                         name = name,
@@ -224,7 +288,8 @@ fun CounterAppScreen(
                         resetValue = reset,
                         colorHex = color,
                         note = note,
-                        quickButtons = quickButtons
+                        quickButtons = quickButtons,
+                        historyDividerThreshold = thresh
                     )
                 )
                 counterToEdit = null
@@ -233,6 +298,19 @@ fun CounterAppScreen(
                 viewModel.deleteCounter(counter)
                 counterToEdit = null
             }
+        )
+    } else if (historyViewTarget != null) {
+        val target = historyViewTarget!!
+        BackHandler {
+            historyViewTarget = null
+        }
+        FullScreenHistoryView(
+            targetCounter = target.first,
+            targetFolder = target.second,
+            viewModel = viewModel,
+            folders = folders,
+            allCounters = counters,
+            onDismiss = { historyViewTarget = null }
         )
     } else {
         Box(
@@ -457,7 +535,16 @@ fun CounterAppScreen(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(activeColor.copy(alpha = 0.12f)),
+                                .background(activeColor.copy(alpha = 0.12f))
+                                .then(
+                                    if (currentFolder != null) {
+                                        Modifier.clickable {
+                                            historyViewTarget = Pair(null, currentFolder)
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -478,19 +565,48 @@ fun CounterAppScreen(
                         )
                     }
 
-                    // Right Element: Button with info (i)
-                    Box {
-                        IconButton(
-                            onClick = { showInfoDropdown = true },
-                            modifier = Modifier.testTag("info_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "View Folder Statistics",
-                                tint = activeColor,
-                                modifier = Modifier.size(26.dp)
-                            )
+                    // Right Element: Button with sort and info (i)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (currentFolder != null) {
+                            IconButton(
+                                onClick = { historyViewTarget = Pair(null, currentFolder) },
+                                modifier = Modifier.testTag("folder_history_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.History,
+                                    contentDescription = "Folder History Logs",
+                                    tint = activeColor,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            IconButton(
+                                onClick = { showSortDialog = true },
+                                modifier = Modifier.testTag("sort_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Sort,
+                                    contentDescription = "Sort Counters",
+                                    tint = activeColor,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
                         }
+                        Box {
+                            IconButton(
+                                onClick = { showInfoDropdown = true },
+                                modifier = Modifier.testTag("info_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = "View Folder Statistics",
+                                    tint = activeColor,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
 
                         // Right Dropdown Menu: Folder Stats
                         DropdownMenu(
@@ -539,6 +655,7 @@ fun CounterAppScreen(
                         }
                     }
                 }
+            }
             }
 
             // Main Contents (Only counters in this active folder)
@@ -607,7 +724,7 @@ fun CounterAppScreen(
                         .fillMaxWidth()
                         .weight(1f)
                 ) {
-                    items(counters, key = { it.id }) { counter ->
+                    items(displayedCounters, key = { it.id }) { counter ->
                         CounterCard(
                             counter = counter,
                             folders = folders,
@@ -617,8 +734,10 @@ fun CounterAppScreen(
                             onDecrementLongClick = { qolAdjustCounterData = Pair(counter, false) },
                             onReset = { viewModel.reset(counter) },
                             onEdit = { counterToEdit = counter },
-                            onShowLogs = { counterForLogs = counter },
-                            onQuickAdjust = { amount -> viewModel.increment(counter, amount) }
+                            onShowLogs = { historyViewTarget = Pair(counter, null) },
+                            onDuplicate = { viewModel.duplicateCounter(counter) },
+                            onQuickAdjust = { amount -> viewModel.increment(counter, amount) },
+                            showFolderLabel = (selectedFolderId == null)
                         )
                     }
                 }
@@ -651,8 +770,8 @@ fun CounterAppScreen(
         AddEditFolderDialog(
             folder = null,
             onDismiss = { showAddFolderDialog = false },
-            onSave = { name, colorHex, iconName ->
-                viewModel.createFolder(name, colorHex, iconName)
+            onSave = { name, colorHex, iconName, isSmart, step, reset, target, quickButtons, thresh ->
+                viewModel.createFolder(name, colorHex, iconName, isSmart, step, reset, target, quickButtons, thresh)
                 showAddFolderDialog = false
             }
         )
@@ -662,13 +781,43 @@ fun CounterAppScreen(
         AddEditFolderDialog(
             folder = folder,
             onDismiss = { folderToEdit = null },
-            onSave = { name, colorHex, iconName ->
-                viewModel.updateFolder(folder.copy(name = name, colorHex = colorHex, iconName = iconName))
+            onSave = { name, colorHex, iconName, isSmart, step, reset, target, quickButtons, thresh ->
+                viewModel.updateFolder(
+                    folder.copy(
+                        name = name,
+                        colorHex = colorHex,
+                        iconName = iconName,
+                        isSmart = isSmart,
+                        defaultStepSize = step,
+                        defaultResetValue = reset,
+                        defaultTargetValue = target,
+                        defaultQuickButtons = quickButtons,
+                        historyDividerThreshold = thresh
+                    )
+                )
                 folderToEdit = null
             },
             onDelete = {
                 viewModel.deleteFolder(folder)
                 folderToEdit = null
+            }
+        )
+    }
+
+    if (showSortDialog) {
+        SortDialog(
+            initialParam = selectedSortParam,
+            initialReverse = isReverseSort,
+            initialAutosort = isAutosortEnabled,
+            initialInterval = autosortIntervalSeconds,
+            onDismiss = { showSortDialog = false },
+            onApply = { param, reverse, autosort, interval ->
+                selectedSortParam = param
+                isReverseSort = reverse
+                isAutosortEnabled = autosort
+                autosortIntervalSeconds = interval
+                performSort(param, reverse)
+                showSortDialog = false
             }
         )
     }
@@ -709,8 +858,10 @@ fun CounterCard(
     onReset: () -> Unit,
     onEdit: () -> Unit,
     onShowLogs: () -> Unit,
+    onDuplicate: () -> Unit,
     onQuickAdjust: (Int) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showFolderLabel: Boolean = true
 ) {
     val counterColor = getColorFromHex(counter.colorHex)
     val folderName = folders.find { it.id == counter.folderId }?.name ?: "General"
@@ -781,6 +932,17 @@ fun CounterCard(
                         )
                     }
                     IconButton(
+                        onClick = onDuplicate,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Duplicate Counter",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
                         onClick = onEdit,
                         modifier = Modifier.size(36.dp)
                     ) {
@@ -799,20 +961,24 @@ fun CounterCard(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
             ) {
-                Text(
-                    text = folderName,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = counterColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (counter.note.isNotEmpty()) {
+                if (showFolderLabel) {
                     Text(
-                        text = " • ",
+                        text = folderName,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        fontWeight = FontWeight.Bold,
+                        color = counterColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    if (counter.note.isNotEmpty()) {
+                        Text(
+                            text = " • ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                        )
+                    }
+                }
+                if (counter.note.isNotEmpty()) {
                     Text(
                         text = counter.note,
                         style = MaterialTheme.typography.bodySmall,
@@ -1423,14 +1589,33 @@ fun PaletteColorsDialog(
 fun AddEditFolderDialog(
     folder: Folder?,
     onDismiss: () -> Unit,
-    onSave: (name: String, colorHex: String, iconName: String) -> Unit,
+    onSave: (
+        name: String,
+        colorHex: String,
+        iconName: String,
+        isSmart: Boolean,
+        defaultStepSize: Int,
+        defaultResetValue: Int,
+        defaultTargetValue: Int?,
+        defaultQuickButtons: String,
+        historyDividerThreshold: Float
+    ) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
     var name by remember { mutableStateOf(folder?.name ?: "") }
     var selectedColorHex by remember { mutableStateOf(folder?.colorHex ?: ColorPresets[0].first) }
     var selectedIconName by remember { mutableStateOf(folder?.iconName ?: IconPresets[0].first) }
 
+    var isSmart by remember { mutableStateOf(folder?.isSmart ?: false) }
+    var defaultStepSizeStr by remember { mutableStateOf(folder?.defaultStepSize?.toString() ?: "1") }
+    var defaultResetValueStr by remember { mutableStateOf(folder?.defaultResetValue?.toString() ?: "0") }
+    var defaultTargetValueStr by remember { mutableStateOf(folder?.defaultTargetValue?.toString() ?: "") }
+    var defaultQuickButtonsStr by remember { mutableStateOf(folder?.defaultQuickButtons ?: "") }
+    var historyDividerThresholdStr by remember { mutableStateOf(folder?.historyDividerThreshold?.toString() ?: "0") }
+
     var errorName by remember { mutableStateOf(false) }
+    var errorStepSize by remember { mutableStateOf(false) }
+    var showPaletteDialog by remember { mutableStateOf(false) }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -1439,6 +1624,7 @@ fun AddEditFolderDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
+                .heightIn(max = 580.dp)
                 .padding(16.dp)
                 .shadow(8.dp, RoundedCornerShape(28.dp)),
             shape = RoundedCornerShape(28.dp),
@@ -1491,35 +1677,53 @@ fun AddEditFolderDialog(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ColorPresets.take(4).forEach { (hex, nameStr) ->
-                        val color = getColorFromHex(hex)
-                        val isSelected = selectedColorHex == hex
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (isSelected) 3.dp else 0.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                                .combinedClickable { selectedColorHex = hex }
+                    // 1. Palette button
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                            .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                            .clickable { showPaletteDialog = true },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Palette,
+                            contentDescription = "Palette Colors",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ColorPresets.drop(4).take(4).forEach { (hex, nameStr) ->
+
+                    // 2. Custom color indicator (if active and not in defaults)
+                    val isInPresets = ColorPresets.any { it.first.equals(selectedColorHex, ignoreCase = true) }
+                    if (!isInPresets) {
+                        val customColor = getColorFromHex(selectedColorHex)
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(customColor)
+                                .border(
+                                    width = 3.dp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    shape = CircleShape
+                                )
+                        )
+                    }
+
+                    // 3. Default presets list
+                    ColorPresets.forEach { (hex, name) ->
                         val color = getColorFromHex(hex)
-                        val isSelected = selectedColorHex == hex
+                        val isSelected = selectedColorHex.equals(hex, ignoreCase = true)
                         Box(
                             modifier = Modifier
                                 .size(36.dp)
@@ -1530,7 +1734,7 @@ fun AddEditFolderDialog(
                                     color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
                                     shape = CircleShape
                                 )
-                                .combinedClickable { selectedColorHex = hex }
+                                .clickable { selectedColorHex = hex }
                         )
                     }
                 }
@@ -1578,6 +1782,128 @@ fun AddEditFolderDialog(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // Smart Folder Toggle
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Smart Folder Settings",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Auto-fill counter values & bulk edit matching settings",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = isSmart,
+                        onCheckedChange = { isSmart = it }
+                    )
+                }
+
+                if (isSmart) {
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = defaultStepSizeStr,
+                            onValueChange = {
+                                defaultStepSizeStr = it
+                                val parsed = it.toIntOrNull()
+                                errorStepSize = parsed == null || parsed <= 0
+                            },
+                            label = { Text("Default Step") },
+                            isError = errorStepSize,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        OutlinedTextField(
+                            value = defaultResetValueStr,
+                            onValueChange = { defaultResetValueStr = it },
+                            label = { Text("Default Reset To") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+
+                    if (errorStepSize) {
+                        Text(
+                            text = "Step size must be a positive number",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = defaultTargetValueStr,
+                        onValueChange = { defaultTargetValueStr = it },
+                        label = { Text("Default Goal Target (Optional)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = defaultQuickButtonsStr,
+                        onValueChange = { newValue ->
+                            if (newValue.all { it in "0123456789+- " }) {
+                                defaultQuickButtonsStr = newValue
+                            }
+                        },
+                        label = { Text("Default Quick Buttons") },
+                        placeholder = { Text("e.g. -10 -5 +5 +10") },
+                        supportingText = {
+                            Text("Only numbers and spaces are allowed.")
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    OutlinedTextField(
+                        value = historyDividerThresholdStr,
+                        onValueChange = { newValue ->
+                            if (newValue.isEmpty() || newValue.all { it in "0123456789." }) {
+                                historyDividerThresholdStr = newValue
+                            }
+                        },
+                        label = { Text("History Divider Interval (seconds)") },
+                        placeholder = { Text("e.g. 1.5 or 10") },
+                        supportingText = {
+                            Text("Thin divider added to history if inactive for X seconds. 0 to disable.")
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Action buttons
@@ -1609,13 +1935,235 @@ fun AddEditFolderDialog(
                                 if (name.trim().isEmpty()) {
                                     errorName = true
                                 } else {
-                                    onSave(name.trim(), selectedColorHex, selectedIconName)
+                                    val stepSize = defaultStepSizeStr.toIntOrNull() ?: 1
+                                    val resetVal = defaultResetValueStr.toIntOrNull() ?: 0
+                                    val targetVal = defaultTargetValueStr.toIntOrNull()
+                                    val thresh = historyDividerThresholdStr.toFloatOrNull() ?: 0f
+                                    onSave(
+                                        name.trim(),
+                                        selectedColorHex,
+                                        selectedIconName,
+                                        isSmart,
+                                        stepSize,
+                                        resetVal,
+                                        targetVal,
+                                        defaultQuickButtonsStr.trim(),
+                                        thresh
+                                    )
                                 }
                             },
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Text("Save")
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showPaletteDialog) {
+        PaletteColorsDialog(
+            initialColorHex = selectedColorHex,
+            onDismiss = { showPaletteDialog = false },
+            onColorSelected = {
+                selectedColorHex = it
+                showPaletteDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun SortDialog(
+    initialParam: String?,
+    initialReverse: Boolean,
+    initialAutosort: Boolean,
+    initialInterval: Int,
+    onDismiss: () -> Unit,
+    onApply: (param: String, reverse: Boolean, autosort: Boolean, interval: Int) -> Unit
+) {
+    var selectedParam by remember { mutableStateOf(initialParam ?: "quantity") }
+    var reverseSort by remember { mutableStateOf(initialReverse) }
+    var autosortEnabled by remember { mutableStateOf(initialAutosort) }
+    var autosortIntervalStr by remember { mutableStateOf(initialInterval.toString()) }
+
+    var errorInterval by remember { mutableStateOf(false) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .padding(16.dp)
+                .shadow(8.dp, RoundedCornerShape(28.dp)),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "Sort Counters",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Param selection
+                Text(
+                    text = "Sort By",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val options = listOf(
+                    "quantity" to "Quantity / Current Value",
+                    "createdAt" to "Date of Creation",
+                    "lastModified" to "Date of Change",
+                    "name" to "Name"
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    options.forEach { (param, label) ->
+                        val isSelected = selectedParam == param
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { selectedParam = param }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = { selectedParam = param }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Reverse sorting checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { reverseSort = !reverseSort }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = reverseSort,
+                        onCheckedChange = { reverseSort = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Reverse Sorting",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (reverseSort) "From least to greatest" else "From greatest to least (Default)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Autosort checkbox
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { autosortEnabled = !autosortEnabled }
+                        .padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = autosortEnabled,
+                        onCheckedChange = { autosortEnabled = it }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "Auto-sort",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "Keep counters sorted automatically over time",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                if (autosortEnabled) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = autosortIntervalStr,
+                        onValueChange = {
+                            autosortIntervalStr = it
+                            val parsed = it.toIntOrNull()
+                            errorInterval = parsed == null || parsed <= 0
+                        },
+                        label = { Text("Auto-sort interval (seconds)") },
+                        isError = errorInterval,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    if (errorInterval) {
+                        Text(
+                            text = "Interval must be a positive number",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val interval = autosortIntervalStr.toIntOrNull() ?: 5
+                            if (!autosortEnabled || interval > 0) {
+                                onApply(selectedParam, reverseSort, autosortEnabled, interval)
+                            }
+                        },
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !autosortEnabled || (!errorInterval && autosortIntervalStr.isNotEmpty())
+                    ) {
+                        Text("Apply")
                     }
                 }
             }
@@ -1639,7 +2187,8 @@ fun AddEditCounterScreen(
         resetValue: Int,
         colorHex: String,
         note: String,
-        quickButtons: String
+        quickButtons: String,
+        historyDividerThreshold: Float
     ) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
@@ -1653,6 +2202,7 @@ fun AddEditCounterScreen(
     var selectedColorHex by remember { mutableStateOf(counter?.colorHex ?: ColorPresets[0].first) }
     var note by remember { mutableStateOf(counter?.note ?: "") }
     var quickButtonsStr by remember { mutableStateOf(counter?.quickButtons ?: "") }
+    var historyDividerThresholdStr by remember { mutableStateOf(counter?.historyDividerThreshold?.toString() ?: "0") }
 
     var folderDropdownExpanded by remember { mutableStateOf(false) }
 
@@ -1661,6 +2211,19 @@ fun AddEditCounterScreen(
 
     var showPaletteDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmation by remember { mutableStateOf(false) }
+
+    LaunchedEffect(folderId) {
+        if (counter == null) {
+            val selectedFolder = folders.find { it.id == folderId }
+            if (selectedFolder != null && selectedFolder.isSmart) {
+                stepSizeStr = selectedFolder.defaultStepSize.toString()
+                resetValueStr = selectedFolder.defaultResetValue.toString()
+                targetValueStr = selectedFolder.defaultTargetValue?.toString() ?: ""
+                quickButtonsStr = selectedFolder.defaultQuickButtons
+                historyDividerThresholdStr = selectedFolder.historyDividerThreshold.toString()
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -1874,13 +2437,39 @@ fun AddEditCounterScreen(
             // Quick Buttons Config Field
             OutlinedTextField(
                 value = quickButtonsStr,
-                onValueChange = { quickButtonsStr = it },
+                onValueChange = { newValue ->
+                    if (newValue.all { it in "0123456789+- " }) {
+                        quickButtonsStr = newValue
+                    }
+                },
                 label = { Text("Quick Buttons") },
                 placeholder = { Text("-10 -5 +5 +10") },
                 supportingText = {
                     Text("Enter numbers separated by spaces. Prefix with - to subtract.")
                 },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // History Divider Interval
+            OutlinedTextField(
+                value = historyDividerThresholdStr,
+                onValueChange = { newValue ->
+                    if (newValue.isEmpty() || newValue.all { it in "0123456789." }) {
+                        historyDividerThresholdStr = newValue
+                    }
+                },
+                label = { Text("History Divider Interval (seconds)") },
+                placeholder = { Text("e.g. 1.5 or 10") },
+                supportingText = {
+                    Text("Thin divider added to history if inactive for X seconds. Set 0 to disable.")
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -1983,6 +2572,7 @@ fun AddEditCounterScreen(
                             val currentVal = currentValueStr.toIntOrNull() ?: initVal
                             val target = targetValueStr.toIntOrNull()
                             val reset = resetValueStr.toIntOrNull() ?: 0
+                            val thresh = historyDividerThresholdStr.toFloatOrNull() ?: 0f
                             onSave(
                                 name.trim(),
                                 folderId,
@@ -1992,7 +2582,8 @@ fun AddEditCounterScreen(
                                 reset,
                                 selectedColorHex,
                                 note.trim(),
-                                quickButtonsStr.trim()
+                                quickButtonsStr.trim(),
+                                thresh
                             )
                         }
                     },
@@ -2232,6 +2823,344 @@ fun LogItem(
                     fontWeight = FontWeight.Bold,
                     color = badgeColor
                 )
+            }
+        }
+    }
+}
+
+@Composable
+fun FullScreenHistoryView(
+    targetCounter: Counter?,
+    targetFolder: Folder?,
+    viewModel: CounterViewModel,
+    folders: List<Folder>,
+    allCounters: List<Counter>,
+    onDismiss: () -> Unit
+) {
+    // Collect logs
+    val logsState = if (targetCounter != null) {
+        viewModel.getLogsForCounter(targetCounter.id).collectAsState(initial = emptyList())
+    } else if (targetFolder != null) {
+        val folderCounters = allCounters.filter { it.folderId == targetFolder.id }
+        val ids = folderCounters.map { it.id }
+        viewModel.getLogsForCounters(ids).collectAsState(initial = emptyList())
+    } else {
+        viewModel.getLogsForCounters(allCounters.map { it.id }).collectAsState(initial = emptyList())
+    }
+
+    val logs = logsState.value
+
+    // Format timestamps beautifully
+    val dateFormat = remember { java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = when {
+                            targetCounter != null -> "History: ${targetCounter.name}"
+                            targetFolder != null -> "Folder History: ${targetFolder.name}"
+                            else -> "All History Logs"
+                        },
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Default.ArrowBack,
+                            contentDescription = "Back"
+                        )
+                    }
+                },
+                actions = {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    
+                    // 1. Local Divider Button (Active if targetCounter/targetFolder exists or at least one counter exists)
+                    val canAddLocal = targetCounter != null || targetFolder != null || allCounters.isNotEmpty()
+                    if (canAddLocal) {
+                        IconButton(
+                            onClick = {
+                                if (targetCounter != null) {
+                                    viewModel.insertManualDivider(targetCounter.id, isGlobal = false)
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Local divider added for ${targetCounter.name}!",
+                                        android.widget.Toast.LENGTH_SHORT
+                                    ).show()
+                                } else if (targetFolder != null) {
+                                    val folderCounters = allCounters.filter { it.folderId == targetFolder.id }
+                                    if (folderCounters.isNotEmpty()) {
+                                        folderCounters.forEach { counter ->
+                                            viewModel.insertManualDivider(counter.id, isGlobal = false)
+                                        }
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "Local divider added for counters in ${targetFolder.name}!",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "No counters in this folder to add divider to!",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                } else {
+                                    val firstCounter = allCounters.firstOrNull()
+                                    if (firstCounter != null) {
+                                        viewModel.insertManualDivider(firstCounter.id, isGlobal = false)
+                                        android.widget.Toast.makeText(
+                                            context,
+                                            "Local divider added for ${firstCounter.name}!",
+                                            android.widget.Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.testTag("add_local_divider_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = "Add Local Divider"
+                            )
+                        }
+                    }
+
+                    // 2. Global Divider Button (Active if any counters exist)
+                    if (allCounters.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                viewModel.insertGlobalDivider(allCounters)
+                                android.widget.Toast.makeText(
+                                    context,
+                                    "Global divider added to all counters & folder histories!",
+                                    android.widget.Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            modifier = Modifier.testTag("add_global_divider_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "Add Global Divider"
+                            )
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { innerPadding ->
+        if (logs.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No history records found",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        } else {
+            // Display as a beautiful alternating table with left stripes and conditional history dividers
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                itemsIndexed(logs) { index, log ->
+                    val counter = allCounters.find { it.id == log.counterId }
+                    val counterColor = counter?.let { getColorFromHex(it.colorHex) } ?: MaterialTheme.colorScheme.primary
+                    val counterName = counter?.name ?: "Unknown"
+
+                    // Alternating background colors
+                    val rowBgColor = if (index % 2 == 0) Color(0xFF0F0F0F) else Color(0xFF1F1F1F)
+
+                    val isManualDividerLocal = log.note == "[MANUAL_DIVIDER_LOCAL]"
+                    val isManualDividerGlobal = log.note == "[MANUAL_DIVIDER_GLOBAL]"
+
+                    Column {
+                        if (isManualDividerLocal || isManualDividerGlobal) {
+                            val dividerLabel = if (isManualDividerLocal) "Manual Divider" else "Global Manual Divider"
+                            val stripeColor = if (isManualDividerLocal) {
+                                counterColor
+                            } else {
+                                MaterialTheme.colorScheme.secondary
+                            }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(rowBgColor)
+                                    .padding(vertical = 12.dp, horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(1.dp)
+                                        .background(stripeColor.copy(alpha = 0.4f))
+                                )
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = dividerLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = stripeColor
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = try {
+                                            dateFormat.format(java.util.Date(log.timestamp))
+                                        } catch (e: Exception) {
+                                            ""
+                                        },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Color.LightGray.copy(alpha = 0.6f)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(1.dp)
+                                        .background(stripeColor.copy(alpha = 0.4f))
+                                )
+                            }
+                        } else {
+                            // Render the standard log row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(rowBgColor)
+                                    .height(IntrinsicSize.Min), // perfectly match stripe height
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Left thin color stripe (10dp wide matching counter color)
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxHeight()
+                                        .width(10.dp)
+                                        .background(counterColor)
+                                )
+
+                                // Main Row Content
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Left Side: Counter name and Date/Time
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = counterName,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = try {
+                                                dateFormat.format(java.util.Date(log.timestamp))
+                                            } catch (e: Exception) {
+                                                "Unknown date"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = Color.LightGray
+                                        )
+                                        if (log.note.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = log.note,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Color.LightGray.copy(alpha = 0.8f)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    // Right Side: Path / Value change
+                                    Column(
+                                        horizontalAlignment = Alignment.End
+                                    ) {
+                                        val isPositive = log.changeValue >= 0
+                                        val badgeColor = if (isPositive) Color(0xFF4CAF50) else Color(0xFFEF5350)
+                                        
+                                        Text(
+                                            text = "Path: ${log.previousValue} ➔ ${log.newValue}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color.LightGray
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = if (isPositive) "+${log.changeValue}" else "${log.changeValue}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = badgeColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Check if we need to insert a history divider before the next log item
+                        if (index < logs.size - 1) {
+                            val nextLog = logs[index + 1]
+                            val timeDiffSec = java.lang.Math.abs(log.timestamp - nextLog.timestamp) / 1000f
+
+                            // Find the appropriate threshold for the current counter
+                            val threshold = counter?.let { c ->
+                                if (c.historyDividerThreshold > 0f) {
+                                    c.historyDividerThreshold
+                                } else {
+                                    folders.find { it.id == c.folderId }?.let { f ->
+                                        if (f.isSmart) f.historyDividerThreshold else 0f
+                                    } ?: 0f
+                                }
+                            } ?: 0f
+
+                            if (threshold > 0f && timeDiffSec >= threshold) {
+                                // Render a thin divider marking inactivity
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+                                        .padding(vertical = 4.dp, horizontal = 16.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
+                                        Text(
+                                            text = " Inactivity: ${String.format("%.1f", timeDiffSec)}s (Limit: ${threshold}s) ",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(horizontal = 8.dp)
+                                        )
+                                        Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }

@@ -47,6 +47,9 @@ interface CounterDao {
     @Query("SELECT * FROM counter_logs WHERE counterId = :counterId ORDER BY timestamp DESC")
     fun getLogsForCounter(counterId: Long): Flow<List<CounterLog>>
 
+    @Query("SELECT * FROM counter_logs WHERE counterId IN (:counterIds) ORDER BY timestamp DESC")
+    fun getLogsForCounters(counterIds: List<Long>): Flow<List<CounterLog>>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertLog(log: CounterLog)
 

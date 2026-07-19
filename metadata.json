@@ -1,6 +1,6 @@
 {
-  "name": "Counter Tracker",
-  "description": "Track customized counters categorized in folders with goals, custom step sizes, and history logs.",
+  "name": "Counter",
+  "description": "Customizable counters inside customizable folders, with individual settings, progress tracking, and history logs.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

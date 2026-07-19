@@ -8,9 +8,11 @@ package com.example
 
 import android.graphics.Color as AndroidColor
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.compose.BackHandler
 import androidx.activity.viewModels
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -18,7 +20,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -97,6 +101,39 @@ val ColorPresets = listOf(
     "#455A64" to "Slate Blue"
 )
 
+val ExtendedColorPresets = listOf(
+    "#3F51B5" to "Indigo",
+    "#2E7D32" to "Green",
+    "#EF6C00" to "Orange",
+    "#C62828" to "Red",
+    "#00838F" to "Teal",
+    "#6A1B9A" to "Purple",
+    "#AD1457" to "Pink",
+    "#455A64" to "Slate Blue",
+    "#1E88E5" to "Blue",
+    "#00ACC1" to "Cyan",
+    "#00897B" to "Teal Accent",
+    "#43A047" to "Green Accent",
+    "#7CB342" to "Light Green",
+    "#C0CA33" to "Lime",
+    "#FDD835" to "Yellow",
+    "#FFB300" to "Amber",
+    "#F4511E" to "Deep Orange",
+    "#D81B60" to "Vibrant Pink",
+    "#8E24AA" to "Medium Purple",
+    "#5E35B1" to "Deep Purple",
+    "#3949AB" to "Dark Indigo",
+    "#039BE5" to "Light Blue",
+    "#0059B3" to "Navy",
+    "#2E8B57" to "Sea Green",
+    "#20B2AA" to "Light Sea Green",
+    "#CD5C5C" to "Indian Red",
+    "#DA70D6" to "Orchid",
+    "#FF1493" to "Deep Pink",
+    "#FF7F50" to "Coral",
+    "#607D8B" to "Blue Grey"
+)
+
 // Preset Icons
 val IconPresets = listOf(
     "Folder" to Icons.Default.Folder,
@@ -137,399 +174,477 @@ fun CounterAppScreen(
     var showAddCounterDialog by remember { mutableStateOf(false) }
     var counterToEdit by remember { mutableStateOf<Counter?>(null) }
     var counterForLogs by remember { mutableStateOf<Counter?>(null) }
+    var qolAdjustCounterData by remember { mutableStateOf<Pair<Counter, Boolean>?>(null) }
+
+    var showMoreDropdown by remember { mutableStateOf(false) }
+    var showInfoDropdown by remember { mutableStateOf(false) }
+
+    val context = LocalContext.current
 
     // Aggregate statistics
     val totalCountersCount = counters.size
     val totalAccumulatedClicks = counters.sumOf { it.currentValue }
     val currentFolder = folders.find { it.id == selectedFolderId }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // App Header
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-            ),
-            shape = RoundedCornerShape(24.dp)
+    // Dynamic primary color based on active folder
+    val activeColor = currentFolder?.let { getColorFromHex(it.colorHex) } ?: MaterialTheme.colorScheme.primary
+
+    if (showAddCounterDialog) {
+        BackHandler {
+            showAddCounterDialog = false
+        }
+        AddEditCounterScreen(
+            counter = null,
+            folders = folders,
+            preselectedFolderId = selectedFolderId,
+            onDismiss = { showAddCounterDialog = false },
+            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons ->
+                viewModel.createCounter(name, folderId, initVal, step, target, reset, color, note, quickButtons)
+                showAddCounterDialog = false
+            }
+        )
+    } else if (counterToEdit != null) {
+        val counter = counterToEdit!!
+        BackHandler {
+            counterToEdit = null
+        }
+        AddEditCounterScreen(
+            counter = counter,
+            folders = folders,
+            preselectedFolderId = counter.folderId,
+            onDismiss = { counterToEdit = null },
+            onSave = { name, folderId, initVal, step, target, reset, color, note, quickButtons ->
+                viewModel.updateCounter(
+                    counter.copy(
+                        name = name,
+                        folderId = folderId,
+                        currentValue = initVal,
+                        stepSize = step,
+                        targetValue = target,
+                        resetValue = reset,
+                        colorHex = color,
+                        note = note,
+                        quickButtons = quickButtons
+                    )
+                )
+                counterToEdit = null
+            },
+            onDelete = {
+                viewModel.deleteCounter(counter)
+                counterToEdit = null
+            }
+        )
+    } else {
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp)
+                modifier = Modifier.fillMaxSize()
+            ) {
+            // Modern Polished Top Banner Header
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .shadow(4.dp, RoundedCornerShape(20.dp)),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.5.dp, activeColor.copy(alpha = 0.4f))
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column {
+                    // Left element: Button with three dots (...)
+                    Box {
+                        IconButton(
+                            onClick = { showMoreDropdown = true },
+                            modifier = Modifier.testTag("more_options_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = "Folder Navigation & Settings",
+                                tint = activeColor,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+
+                        // Left Dropdown Menu: Settings, Divider, Create Folder, Folders List
+                        DropdownMenu(
+                            expanded = showMoreDropdown,
+                            onDismissRequest = { showMoreDropdown = false },
+                            modifier = Modifier
+                                .width(240.dp)
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            // Top item: Settings (Placeholder for now)
+                            DropdownMenuItem(
+                                text = { 
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Settings,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text("Settings (Placeholder)", fontWeight = FontWeight.Bold)
+                                    }
+                                },
+                                onClick = {
+                                    showMoreDropdown = false
+                                    Toast.makeText(context, "Settings fully configured per counter/folder!", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+
+                            // Create Folder Button
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.CreateNewFolder,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Text("Create Folder", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                    }
+                                },
+                                onClick = {
+                                    showMoreDropdown = false
+                                    showAddFolderDialog = true
+                                }
+                            )
+
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 4.dp),
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+
+                            // Title for Folders List
+                            Text(
+                                text = "Switch Folders (Hold to Edit)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            )
+
+                            // All Counters Option
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .combinedClickable(
+                                        onClick = {
+                                            viewModel.selectFolder(null)
+                                            showMoreDropdown = false
+                                        }
+                                    )
+                                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(24.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Dashboard,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = "All Counters",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = if (selectedFolderId == null) FontWeight.Bold else FontWeight.Normal,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                if (selectedFolderId == null) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            // Custom Folders Switch list
+                            folders.forEach { folder ->
+                                val isSelected = selectedFolderId == folder.id
+                                val fColor = getColorFromHex(folder.colorHex)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                viewModel.selectFolder(folder.id)
+                                                showMoreDropdown = false
+                                            },
+                                            onLongClick = {
+                                                folderToEdit = folder
+                                                showMoreDropdown = false
+                                            }
+                                        )
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(24.dp)
+                                            .clip(CircleShape)
+                                            .background(fColor.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = getIconByName(folder.iconName),
+                                            contentDescription = null,
+                                            tint = fColor,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = folder.name,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.weight(1f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    if (isSelected) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = "Selected",
+                                            tint = fColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Center Element: Name of the Folder (with icon)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(activeColor.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = if (currentFolder != null) getIconByName(currentFolder.iconName) else Icons.Default.Dashboard,
+                                contentDescription = null,
+                                tint = activeColor,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Counter Tracker",
-                            style = MaterialTheme.typography.headlineMedium,
+                            text = currentFolder?.name ?: "All Counters",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    // Right Element: Button with info (i)
+                    Box {
+                        IconButton(
+                            onClick = { showInfoDropdown = true },
+                            modifier = Modifier.testTag("info_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "View Folder Statistics",
+                                tint = activeColor,
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+
+                        // Right Dropdown Menu: Folder Stats
+                        DropdownMenu(
+                            expanded = showInfoDropdown,
+                            onDismissRequest = { showInfoDropdown = false },
+                            modifier = Modifier
+                                .width(220.dp)
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(12.dp)
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    text = "Folder Info",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = activeColor
+                                )
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Counters", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("$totalCountersCount active", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Accumulated", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("$totalAccumulatedClicks", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                }
+
+                                Text(
+                                    text = "Log values, manage folders, and trace board game or task progress.",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                    lineHeight = 14.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Main Contents (Only counters in this active folder)
+            if (counters.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(80.dp)
+                                .clip(CircleShape)
+                                .background(activeColor.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Pin,
+                                contentDescription = null,
+                                tint = activeColor,
+                                modifier = Modifier.size(40.dp)
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "No counters found",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Log values, manage folders, trace progress",
+                            text = if (currentFolder != null) {
+                                "Add a new counter to this folder to get started."
+                            } else {
+                                "Create customizable counters with step goals, colors, and notes."
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.widthIn(max = 260.dp)
                         )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primary)
-                            .combinedClickable(
-                                onClick = { showAddCounterDialog = true }
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Create Counter",
-                            tint = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(28.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // App Quick Stats
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.secondaryContainer),
-                            contentAlignment = Alignment.Center
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Button(
+                            onClick = { showAddCounterDialog = true },
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = activeColor)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Numbers,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Counters",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "$totalCountersCount active",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.tertiaryContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.TrendingUp,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onTertiaryContainer,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = "Accumulated",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = "$totalAccumulatedClicks",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
+                            Icon(imageVector = Icons.Default.Add, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Add Counter")
                         }
                     }
                 }
-            }
-        }
-
-        // Folders Selection Row
-        Text(
-            text = "Folders / Categories",
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // "All" folder selection
-            item {
-                val isSelected = selectedFolderId == null
-                val folderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                val textColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-
-                Card(
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 88.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
-                        .height(54.dp)
-                        .testTag("folder_all")
-                        .combinedClickable(
-                            onClick = { viewModel.selectFolder(null) }
-                        ),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = folderColor)
+                        .fillMaxWidth()
+                        .weight(1f)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxHeight(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Dashboard,
-                            contentDescription = null,
-                            tint = textColor,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "All",
-                            fontWeight = FontWeight.SemiBold,
-                            color = textColor,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            // Custom Folders from Database
-            items(folders, key = { it.id }) { folder ->
-                val isSelected = selectedFolderId == folder.id
-                val folderColor = getColorFromHex(folder.colorHex)
-                val isSystemDark = isSystemInDarkTheme()
-
-                val cardBg = if (isSelected) {
-                    folderColor
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                }
-
-                val contentColor = if (isSelected) {
-                    Color.White
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                }
-
-                Card(
-                    modifier = Modifier
-                        .height(54.dp)
-                        .testTag("folder_${folder.id}")
-                        .combinedClickable(
-                            onClick = { viewModel.selectFolder(folder.id) },
-                            onLongClick = { folderToEdit = folder }
-                        ),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = cardBg)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .fillMaxHeight(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(if (isSelected) Color.White.copy(alpha = 0.2f) else folderColor.copy(alpha = 0.15f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = getIconByName(folder.iconName),
-                                contentDescription = null,
-                                tint = if (isSelected) Color.White else folderColor,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = folder.name,
-                            fontWeight = FontWeight.SemiBold,
-                            color = contentColor,
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
-                }
-            }
-
-            // Add Folder Button
-            item {
-                Card(
-                    modifier = Modifier
-                        .size(54.dp)
-                        .testTag("add_folder_button")
-                        .combinedClickable(
-                            onClick = { showAddFolderDialog = true }
-                        ),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.CreateNewFolder,
-                            contentDescription = "Create Folder",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp)
+                    items(counters, key = { it.id }) { counter ->
+                        CounterCard(
+                            counter = counter,
+                            folders = folders,
+                            onIncrement = { viewModel.increment(counter) },
+                            onDecrement = { viewModel.decrement(counter) },
+                            onIncrementLongClick = { qolAdjustCounterData = Pair(counter, true) },
+                            onDecrementLongClick = { qolAdjustCounterData = Pair(counter, false) },
+                            onReset = { viewModel.reset(counter) },
+                            onEdit = { counterToEdit = counter },
+                            onShowLogs = { counterForLogs = counter },
+                            onQuickAdjust = { amount -> viewModel.increment(counter, amount) }
                         )
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Main Counters Title
-        Row(
+        // Floating Action Button to create a new counter in the bottom right corner (Circular, compact)
+        FloatingActionButton(
+            onClick = { showAddCounterDialog = true },
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .align(Alignment.BottomEnd)
+                .padding(20.dp)
+                .size(54.dp)
+                .testTag("add_counter_fab"),
+            containerColor = activeColor,
+            contentColor = Color.White,
+            shape = CircleShape
         ) {
-            Text(
-                text = if (currentFolder != null) "${currentFolder.name} Counters" else "All Counters",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Create Counter",
+                modifier = Modifier.size(24.dp)
             )
-
-            if (currentFolder != null) {
-                TextButton(
-                    onClick = { folderToEdit = currentFolder },
-                    contentPadding = PaddingValues(0.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit Folder settings",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Folder Settings", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        }
-
-        // Empty State / Counters list
-        if (counters.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Pin,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(40.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        text = "No counters found",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = if (currentFolder != null) {
-                            "Add a new counter to this custom folder to get started."
-                        } else {
-                            "Create customizable counters with step goals, colors, and notes."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.widthIn(max = 260.dp)
-                    )
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Button(
-                        onClick = { showAddCounterDialog = true },
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Icon(imageVector = Icons.Default.Add, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Add Counter")
-                    }
-                }
-            }
-        } else {
-            // Counters Vertical Scroll List
-            LazyColumn(
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            ) {
-                items(counters, key = { it.id }) { counter ->
-                    CounterCard(
-                        counter = counter,
-                        folders = folders,
-                        onIncrement = { viewModel.increment(counter) },
-                        onDecrement = { viewModel.decrement(counter) },
-                        onReset = { viewModel.reset(counter) },
-                        onEdit = { counterToEdit = counter },
-                        onShowLogs = { counterForLogs = counter }
-                    )
-                }
-            }
         }
     }
+    } // Closing of else block for full-screen interceptor
 
     // Modal Dialogs
     if (showAddFolderDialog) {
@@ -558,52 +673,27 @@ fun CounterAppScreen(
         )
     }
 
-    if (showAddCounterDialog) {
-        AddEditCounterDialog(
-            counter = null,
-            folders = folders,
-            preselectedFolderId = selectedFolderId,
-            onDismiss = { showAddCounterDialog = false },
-            onSave = { name, folderId, initVal, step, target, reset, color, note ->
-                viewModel.createCounter(name, folderId, initVal, step, target, reset, color, note)
-                showAddCounterDialog = false
-            }
-        )
-    }
-
-    counterToEdit?.let { counter ->
-        AddEditCounterDialog(
-            counter = counter,
-            folders = folders,
-            preselectedFolderId = counter.folderId,
-            onDismiss = { counterToEdit = null },
-            onSave = { name, folderId, initVal, step, target, reset, color, note ->
-                viewModel.updateCounter(
-                    counter.copy(
-                        name = name,
-                        folderId = folderId,
-                        initialValue = initVal,
-                        stepSize = step,
-                        targetValue = target,
-                        resetValue = reset,
-                        colorHex = color,
-                        note = note
-                    )
-                )
-                counterToEdit = null
-            },
-            onDelete = {
-                viewModel.deleteCounter(counter)
-                counterToEdit = null
-            }
-        )
-    }
-
     counterForLogs?.let { counter ->
         CounterLogsSheetDialog(
             counter = counter,
             viewModel = viewModel,
             onDismiss = { counterForLogs = null }
+        )
+    }
+
+    qolAdjustCounterData?.let { (counter, isAddMode) ->
+        QolAdjustDialog(
+            counter = counter,
+            initialIsAdd = isAddMode,
+            onDismiss = { qolAdjustCounterData = null },
+            onSave = { points, isAdd ->
+                if (isAdd) {
+                    viewModel.increment(counter, points)
+                } else {
+                    viewModel.decrement(counter, points)
+                }
+                qolAdjustCounterData = null
+            }
         )
     }
 }
@@ -614,9 +704,12 @@ fun CounterCard(
     folders: List<Folder>,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
+    onIncrementLongClick: () -> Unit,
+    onDecrementLongClick: () -> Unit,
     onReset: () -> Unit,
     onEdit: () -> Unit,
     onShowLogs: () -> Unit,
+    onQuickAdjust: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val counterColor = getColorFromHex(counter.colorHex)
@@ -633,15 +726,19 @@ fun CounterCard(
         border = BorderStroke(1.dp, counterColor.copy(alpha = 0.3f))
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(14.dp)
         ) {
-            // Counter Header / Category & Edit
+            // Header Row: Counter Name & Controls
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Left side: Counter name with indicator circle
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Box(
                         modifier = Modifier
                             .size(8.dp)
@@ -650,16 +747,28 @@ fun CounterCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = folderName.uppercase(),
-                        style = MaterialTheme.typography.labelSmall,
+                        text = counter.name,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = counterColor,
+                        color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
 
-                Row {
+                // Right side: Reset, History, Settings
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onReset,
+                        modifier = Modifier.size(36.dp).testTag("reset_button_${counter.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Reset Counter",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                     IconButton(
                         onClick = onShowLogs,
                         modifier = Modifier.size(36.dp)
@@ -668,7 +777,7 @@ fun CounterCard(
                             imageVector = Icons.Outlined.History,
                             contentDescription = "View History Logs",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                     IconButton(
@@ -679,62 +788,58 @@ fun CounterCard(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Counter Settings",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Counter Title
-            Text(
-                text = counter.name,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            // Description / Note if set
-            if (counter.note.isNotEmpty()) {
+            // Compact Folder & Description row
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
+            ) {
                 Text(
-                    text = counter.note,
+                    text = folderName,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
+                    fontWeight = FontWeight.Bold,
+                    color = counterColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
+                if (counter.note.isNotEmpty()) {
+                    Text(
+                        text = " • ",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = counter.note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Counter Value & Tactile Adjustments
+            // Counter Value & Tactile Adjustments Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Decrement Button
-                FilledIconButton(
+                // Decrement Button (Tactile Hold Button!)
+                TactileHoldButton(
                     onClick = onDecrement,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("decrement_button_${counter.id}"),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = counterColor.copy(alpha = 0.12f),
-                        contentColor = counterColor
-                    ),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Remove,
-                        contentDescription = "Subtract ${counter.stepSize}",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                    onLongClick = onDecrementLongClick,
+                    containerColor = counterColor.copy(alpha = 0.12f),
+                    contentColor = counterColor,
+                    icon = Icons.Default.Remove,
+                    contentDescription = "Subtract ${counter.stepSize}",
+                    testTag = "decrement_button_${counter.id}"
+                )
 
                 // Count Display
                 Column(
@@ -750,114 +855,564 @@ fun CounterCard(
                     )
                 }
 
-                // Increment Button
-                FilledIconButton(
+                // Increment Button (Tactile Hold Button!)
+                TactileHoldButton(
                     onClick = onIncrement,
-                    modifier = Modifier
-                        .size(48.dp)
-                        .testTag("increment_button_${counter.id}"),
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = counterColor,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(14.dp)
+                    onLongClick = onIncrementLongClick,
+                    containerColor = counterColor,
+                    contentColor = Color.White,
+                    icon = Icons.Default.Add,
+                    contentDescription = "Add ${counter.stepSize}",
+                    testTag = "increment_button_${counter.id}"
+                )
+            }
+
+            // Quick Action Buttons Row (divided by space, e.g. "-10 -5 +5 +10")
+            val quickButtonsList = remember(counter.quickButtons) {
+                counter.quickButtons.split("\\s+".toRegex())
+                    .mapNotNull { it.trim().toIntOrNull() }
+            }
+
+            if (quickButtonsList.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+                val isScrollable = quickButtonsList.size > 4
+                val rowModifier = if (isScrollable) {
+                    Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                } else {
+                    Modifier.fillMaxWidth()
+                }
+
+                Row(
+                    modifier = rowModifier,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add ${counter.stepSize}",
-                        modifier = Modifier.size(22.dp)
-                    )
+                    quickButtonsList.forEach { value ->
+                        val isMinus = value < 0
+                        val label = if (value > 0) "+$value" else "$value"
+                        val buttonColor = counterColor
+                        val textColor = Color.White
+
+                        val itemModifier = if (isScrollable) {
+                            Modifier
+                                .height(36.dp)
+                                .widthIn(min = 64.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(buttonColor)
+                                .clickable { onQuickAdjust(value) }
+                        } else {
+                            Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(buttonColor)
+                                .clickable { onQuickAdjust(value) }
+                        }
+
+                        Box(
+                            modifier = itemModifier,
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor,
+                                modifier = if (isScrollable) Modifier.padding(horizontal = 12.dp) else Modifier
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // Target Value Progress bar
+            if (counter.targetValue != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                val progress = if (counter.targetValue > 0) {
+                    (counter.currentValue.toFloat() / counter.targetValue.toFloat()).coerceIn(0f, 1f)
+                } else 0f
 
-            // Progress bar and resets
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Goal Progress: ${(progress * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = "${counter.currentValue} / ${counter.targetValue}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = counterColor
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(CircleShape),
+                        color = counterColor,
+                        trackColor = counterColor.copy(alpha = 0.15f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun TactileHoldButton(
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    containerColor: Color,
+    contentColor: Color,
+    icon: ImageVector,
+    contentDescription: String,
+    testTag: String,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .size(48.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(containerColor)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+            .testTag(testTag),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            modifier = Modifier.size(22.dp),
+            tint = contentColor
+        )
+    }
+}
+
+@Composable
+fun QolAdjustDialog(
+    counter: Counter,
+    initialIsAdd: Boolean,
+    onDismiss: () -> Unit,
+    onSave: (points: Int, isAdd: Boolean) -> Unit
+) {
+    var isAddSelected by remember { mutableStateOf(initialIsAdd) }
+    var pointsText by remember { mutableStateOf("") }
+    var isError by remember { mutableStateOf(false) }
+
+    val counterColor = getColorFromHex(counter.colorHex)
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth(0.9f)
+                .shadow(8.dp, RoundedCornerShape(24.dp)),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, counterColor.copy(alpha = 0.3f))
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(
-                    modifier = Modifier.weight(1f)
-                ) {
-                    if (counter.targetValue != null) {
-                        val progress = if (counter.targetValue > 0) {
-                            (counter.currentValue.toFloat() / counter.targetValue.toFloat()).coerceIn(0f, 1f)
-                        } else 0f
+                // Title
+                Text(
+                    text = "Quick Adjust: ${counter.name}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Goal Progress: ${(progress * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // Direction Toggle Buttons (Swapped!)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // SUBTRACT (-) Toggle
+                    val subBg = if (!isAddSelected) counterColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    val subContent = if (!isAddSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(subBg)
+                            .clickable { isAddSelected = false }
+                            .testTag("adjust_sub_toggle"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = null,
+                                tint = subContent,
+                                modifier = Modifier.size(18.dp)
                             )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "${counter.currentValue} / ${counter.targetValue}",
-                                style = MaterialTheme.typography.labelSmall,
+                                "Decrease",
+                                style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
-                                color = counterColor
+                                color = subContent
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                        LinearProgressIndicator(
-                            progress = { progress },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(CircleShape),
-                            color = counterColor,
-                            trackColor = counterColor.copy(alpha = 0.15f)
-                        )
-                    } else {
-                        // Quick step-size indicator
+                    }
+
+                    // ADD (+) Toggle
+                    val addBg = if (isAddSelected) counterColor else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    val addContent = if (isAddSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(addBg)
+                            .clickable { isAddSelected = true }
+                            .testTag("adjust_add_toggle"),
+                        contentAlignment = Alignment.Center
+                    ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "Step: +${counter.stepSize}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = addContent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                "Add",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = addContent
+                            )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(16.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                // Quick Reset Button
-                OutlinedButton(
-                    onClick = onReset,
+                // Numeric Input Field
+                OutlinedTextField(
+                    value = pointsText,
+                    onValueChange = {
+                        pointsText = it
+                        if (it.isEmpty()) {
+                            isError = false
+                        } else {
+                            val intVal = it.toIntOrNull()
+                            isError = intVal == null || intVal <= 0
+                        }
+                    },
+                    label = { Text("How many points?") },
+                    placeholder = { Text(counter.stepSize.toString()) },
+                    isError = isError,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier
-                        .height(36.dp)
-                        .testTag("reset_button_${counter.id}"),
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    shape = RoundedCornerShape(10.dp),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Reset Counter",
-                        modifier = Modifier.size(14.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
+                        .fillMaxWidth()
+                        .testTag("adjust_points_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                if (isError) {
                     Text(
-                        text = "RESET",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Please enter a valid positive number",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .align(Alignment.Start)
+                            .padding(start = 4.dp, top = 4.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Cancel / Apply buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = {
+                            val pts = if (pointsText.isEmpty()) {
+                                counter.stepSize
+                            } else {
+                                pointsText.toIntOrNull()
+                            }
+                            if (pts != null && pts > 0) {
+                                onSave(pts, isAddSelected)
+                            } else {
+                                isError = true
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = counterColor),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.testTag("adjust_apply_button")
+                    ) {
+                        Text("Apply", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun CustomColorPickerDialog(
+    initialColorHex: String,
+    onDismiss: () -> Unit,
+    onColorSelected: (String) -> Unit
+) {
+    var hexInput by remember { mutableStateOf(initialColorHex.removePrefix("#")) }
+    
+    // Parse initial color
+    val parsedColor = try {
+        AndroidColor.parseColor("#$hexInput")
+    } catch (e: Exception) {
+        AndroidColor.BLUE
+    }
+    
+    var r by remember { mutableStateOf(AndroidColor.red(parsedColor).toFloat()) }
+    var g by remember { mutableStateOf(AndroidColor.green(parsedColor).toFloat()) }
+    var b by remember { mutableStateOf(AndroidColor.blue(parsedColor).toFloat()) }
+    
+    // Derived selected color
+    val selectedColor = Color(r.toInt(), g.toInt(), b.toInt())
+    val selectedHex = String.format("#%02X%02X%02X", r.toInt(), g.toInt(), b.toInt())
+    
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            modifier = Modifier.fillMaxWidth(0.9f).shadow(8.dp, RoundedCornerShape(24.dp))
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "Custom Color Picker",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Color Preview
+                Box(
+                    modifier = Modifier
+                        .size(80.dp)
+                        .clip(CircleShape)
+                        .background(selectedColor)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                )
+                
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Text(
+                    text = selectedHex,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                // Red Slider
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Red", style = MaterialTheme.typography.bodySmall, color = Color.Red, fontWeight = FontWeight.Bold)
+                        Text("${r.toInt()}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Slider(
+                        value = r,
+                        onValueChange = { r = it },
+                        valueRange = 0f..255f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.Red,
+                            activeTrackColor = Color.Red.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+                
+                // Green Slider
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Green", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                        Text("${g.toInt()}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Slider(
+                        value = g,
+                        onValueChange = { g = it },
+                        valueRange = 0f..255f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color(0xFF2E7D32),
+                            activeTrackColor = Color(0xFF2E7D32).copy(alpha = 0.5f)
+                        )
+                    )
+                }
+                
+                // Blue Slider
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Blue", style = MaterialTheme.typography.bodySmall, color = Color.Blue, fontWeight = FontWeight.Bold)
+                        Text("${b.toInt()}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    Slider(
+                        value = b,
+                        onValueChange = { b = it },
+                        valueRange = 0f..255f,
+                        colors = SliderDefaults.colors(
+                            thumbColor = Color.Blue,
+                            activeTrackColor = Color.Blue.copy(alpha = 0.5f)
+                        )
+                    )
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Button(
+                        onClick = { onColorSelected(selectedHex) },
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Select")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PaletteColorsDialog(
+    initialColorHex: String,
+    onDismiss: () -> Unit,
+    onColorSelected: (String) -> Unit
+) {
+    var showCustomPicker by remember { mutableStateOf(false) }
+
+    if (showCustomPicker) {
+        CustomColorPickerDialog(
+            initialColorHex = initialColorHex,
+            onDismiss = { showCustomPicker = false },
+            onColorSelected = {
+                onColorSelected(it)
+                showCustomPicker = false
+            }
+        )
+    } else {
+        Dialog(onDismissRequest = onDismiss) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier.fillMaxWidth(0.95f).shadow(8.dp, RoundedCornerShape(24.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Material 3 Palette Colors",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Box(modifier = Modifier.height(280.dp)) {
+                        FlowRow(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .verticalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            ExtendedColorPresets.forEach { (hex, name) ->
+                                val color = getColorFromHex(hex)
+                                val isSelected = initialColorHex.equals(hex, ignoreCase = true)
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .clip(CircleShape)
+                                        .background(color)
+                                        .border(
+                                            width = if (isSelected) 3.dp else 1.dp,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outlineVariant,
+                                            shape = CircleShape
+                                        )
+                                        .clickable {
+                                            onColorSelected(hex)
+                                        }
+                                )
+                            }
+                        }
+                    }
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = { showCustomPicker = true }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ColorLens,
+                                contentDescription = "Custom Color Picker",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Custom Picker")
+                        }
+
+                        TextButton(
+                            onClick = onDismiss
+                        ) {
+                            Text("Close")
+                        }
+                    }
                 }
             }
         }
@@ -1070,7 +1625,7 @@ fun AddEditFolderDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddEditCounterDialog(
+fun AddEditCounterScreen(
     counter: Counter?,
     folders: List<Folder>,
     preselectedFolderId: Long?,
@@ -1083,7 +1638,8 @@ fun AddEditCounterDialog(
         targetValue: Int?,
         resetValue: Int,
         colorHex: String,
-        note: String
+        note: String,
+        quickButtons: String
     ) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
@@ -1096,316 +1652,393 @@ fun AddEditCounterDialog(
     var resetValueStr by remember { mutableStateOf(counter?.resetValue?.toString() ?: "0") }
     var selectedColorHex by remember { mutableStateOf(counter?.colorHex ?: ColorPresets[0].first) }
     var note by remember { mutableStateOf(counter?.note ?: "") }
+    var quickButtonsStr by remember { mutableStateOf(counter?.quickButtons ?: "") }
 
     var folderDropdownExpanded by remember { mutableStateOf(false) }
 
     var errorName by remember { mutableStateOf(false) }
     var errorStepSize by remember { mutableStateOf(false) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .padding(16.dp)
-                .shadow(8.dp, RoundedCornerShape(28.dp)),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .verticalScroll(rememberScrollState())
-            ) {
-                Text(
-                    text = if (counter == null) "New Counter" else "Counter Settings",
-                    style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+    var showPaletteDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Name Input
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = {
-                        name = it
-                        errorName = it.trim().isEmpty()
-                    },
-                    label = { Text("Counter Title") },
-                    isError = errorName,
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("counter_title_input"),
-                    shape = RoundedCornerShape(12.dp)
-                )
-                if (errorName) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
                     Text(
-                        text = "Title is required",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                        text = if (counter == null) "New Counter" else "Counter Settings",
+                        fontWeight = FontWeight.Bold
                     )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Category Folder selection
-                ExposedDropdownMenuBox(
-                    expanded = folderDropdownExpanded,
-                    onExpandedChange = { folderDropdownExpanded = !folderDropdownExpanded },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    val currentFolder = folders.find { it.id == folderId }
-                    OutlinedTextField(
-                        value = currentFolder?.name ?: "General / Uncategorized",
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Folder Category") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = folderDropdownExpanded) },
-                        modifier = Modifier
-                            .menuAnchor()
-                            .fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = folderDropdownExpanded,
-                        onDismissRequest = { folderDropdownExpanded = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("General / Uncategorized") },
-                            onClick = {
-                                folderId = null
-                                folderDropdownExpanded = false
-                            }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back"
                         )
-                        folders.forEach { folder ->
-                            DropdownMenuItem(
-                                text = { Text(folder.name) },
-                                onClick = {
-                                    folderId = folder.id
-                                    folderDropdownExpanded = false
-                                }
+                    }
+                },
+                actions = {
+                    if (counter != null && onDelete != null) {
+                        IconButton(onClick = { showDeleteConfirmation = true }) {
+                            Icon(
+                                imageVector = Icons.Outlined.Delete,
+                                contentDescription = "Delete Counter",
+                                tint = MaterialTheme.colorScheme.error
                             )
                         }
                     }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Step size and Reset values Row
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = stepSizeStr,
-                        onValueChange = {
-                            stepSizeStr = it
-                            val parsed = it.toIntOrNull()
-                            errorStepSize = parsed == null || parsed <= 0
-                        },
-                        label = { Text("Step Size") },
-                        isError = errorStepSize,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("step_size_input"),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    OutlinedTextField(
-                        value = resetValueStr,
-                        onValueChange = { resetValueStr = it },
-                        label = { Text("Reset To") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-                if (errorStepSize) {
-                    Text(
-                        text = "Step size must be a positive number",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(start = 8.dp, top = 4.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Starting value and target goal limits
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    // Only show Initial Value settings on counter creation to protect logs
-                    if (counter == null) {
-                        OutlinedTextField(
-                            value = initialValueStr,
-                            onValueChange = { initialValueStr = it },
-                            label = { Text("Initial Value") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    } else {
-                        // On editing, allow directly altering current count safely
-                        OutlinedTextField(
-                            value = currentValueStr,
-                            onValueChange = { currentValueStr = it },
-                            label = { Text("Current Count") },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                    }
-
-                    OutlinedTextField(
-                        value = targetValueStr,
-                        onValueChange = { targetValueStr = it },
-                        label = { Text("Goal Target (Opt)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Short Note/Description
-                OutlinedTextField(
-                    value = note,
-                    onValueChange = { note = it },
-                    label = { Text("Add Description / Note (Optional)") },
-                    maxLines = 3,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface
                 )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Visual Preset Color picker
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(20.dp)
+        ) {
+            // Name Input
+            OutlinedTextField(
+                value = name,
+                onValueChange = {
+                    name = it
+                    errorName = it.trim().isEmpty()
+                },
+                label = { Text("Counter Title") },
+                isError = errorName,
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("counter_title_input"),
+                shape = RoundedCornerShape(12.dp)
+            )
+            if (errorName) {
                 Text(
-                    text = "Select Counter Card Color",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = "Title is required",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp)
                 )
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ColorPresets.take(4).forEach { (hex, name) ->
-                        val color = getColorFromHex(hex)
-                        val isSelected = selectedColorHex == hex
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (isSelected) 3.dp else 0.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                                .combinedClickable { selectedColorHex = hex }
-                        )
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    ColorPresets.drop(4).take(4).forEach { (hex, nameStr) ->
-                        val color = getColorFromHex(hex)
-                        val isSelected = selectedColorHex == hex
-                        Box(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(color)
-                                .border(
-                                    width = if (isSelected) 3.dp else 0.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                                .combinedClickable { selectedColorHex = hex }
-                        )
-                    }
-                }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-                // Bottom Buttons
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            // Category Folder selection
+            ExposedDropdownMenuBox(
+                expanded = folderDropdownExpanded,
+                onExpandedChange = { folderDropdownExpanded = !folderDropdownExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                val currentFolder = folders.find { it.id == folderId }
+                OutlinedTextField(
+                    value = currentFolder?.name ?: "General / Uncategorized",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Folder Category") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = folderDropdownExpanded) },
+                    modifier = Modifier
+                        .menuAnchor()
+                        .fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = folderDropdownExpanded,
+                    onDismissRequest = { folderDropdownExpanded = false }
                 ) {
-                    if (counter != null && onDelete != null) {
-                        TextButton(
-                            onClick = onDelete,
-                            colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Icon(imageVector = Icons.Outlined.Delete, contentDescription = null)
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("DELETE")
+                    DropdownMenuItem(
+                        text = { Text("General / Uncategorized") },
+                        onClick = {
+                            folderId = null
+                            folderDropdownExpanded = false
                         }
-                    } else {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-
-                    Row {
-                        TextButton(onClick = onDismiss) {
-                            Text("Cancel")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
+                    )
+                    folders.forEach { folder ->
+                        DropdownMenuItem(
+                            text = { Text(folder.name) },
                             onClick = {
-                                val parsedStep = stepSizeStr.toIntOrNull() ?: 1
-                                if (name.trim().isEmpty() || parsedStep <= 0) {
-                                    if (name.trim().isEmpty()) errorName = true
-                                    if (parsedStep <= 0) errorStepSize = true
-                                } else {
-                                    val initVal = initialValueStr.toIntOrNull() ?: 0
-                                    val currentVal = currentValueStr.toIntOrNull() ?: initVal
-                                    val target = targetValueStr.toIntOrNull()
-                                    val reset = resetValueStr.toIntOrNull() ?: 0
-                                    // Save
-                                    onSave(
-                                        name.trim(),
-                                        folderId,
-                                        if (counter == null) initVal else currentVal,
-                                        parsedStep,
-                                        target,
-                                        reset,
-                                        selectedColorHex,
-                                        note.trim()
-                                    )
-                                }
-                            },
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("Save")
-                        }
+                                folderId = folder.id
+                                folderDropdownExpanded = false
+                            }
+                        )
                     }
                 }
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Step size and Reset values Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                OutlinedTextField(
+                    value = stepSizeStr,
+                    onValueChange = {
+                        stepSizeStr = it
+                        val parsed = it.toIntOrNull()
+                        errorStepSize = parsed == null || parsed <= 0
+                    },
+                    label = { Text("Step Size") },
+                    isError = errorStepSize,
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("step_size_input"),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                OutlinedTextField(
+                    value = resetValueStr,
+                    onValueChange = { resetValueStr = it },
+                    label = { Text("Reset To") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+            if (errorStepSize) {
+                Text(
+                    text = "Step size must be a positive number",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(start = 8.dp, top = 4.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Starting value and target goal limits row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                if (counter == null) {
+                    OutlinedTextField(
+                        value = initialValueStr,
+                        onValueChange = { initialValueStr = it },
+                        label = { Text("Initial Value") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = currentValueStr,
+                        onValueChange = { currentValueStr = it },
+                        label = { Text("Current Count") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = targetValueStr,
+                    onValueChange = { targetValueStr = it },
+                    label = { Text("Goal Target (Optional)") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Short Note/Description
+            OutlinedTextField(
+                value = note,
+                onValueChange = { note = it },
+                label = { Text("Add Description / Note (Optional)") },
+                maxLines = 3,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Quick Buttons Config Field
+            OutlinedTextField(
+                value = quickButtonsStr,
+                onValueChange = { quickButtonsStr = it },
+                label = { Text("Quick Buttons") },
+                placeholder = { Text("-10 -5 +5 +10") },
+                supportingText = {
+                    Text("Enter numbers separated by spaces. Prefix with - to subtract.")
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Visual Preset Color picker
+            Text(
+                text = "Select Counter Card Color",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 1. Palette button
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CircleShape)
+                        .clickable { showPaletteDialog = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Palette,
+                        contentDescription = "Palette Colors",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                // 3. Custom color indicator (if active and not in defaults)
+                val isInPresets = ColorPresets.any { it.first.equals(selectedColorHex, ignoreCase = true) }
+                if (!isInPresets) {
+                    val customColor = getColorFromHex(selectedColorHex)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(customColor)
+                            .border(
+                                width = 3.dp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                shape = CircleShape
+                            )
+                    )
+                }
+
+                // 4. Default presets list
+                ColorPresets.forEach { (hex, name) ->
+                    val color = getColorFromHex(hex)
+                    val isSelected = selectedColorHex.equals(hex, ignoreCase = true)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(color)
+                            .border(
+                                width = if (isSelected) 3.dp else 0.dp,
+                                color = if (isSelected) MaterialTheme.colorScheme.onSurface else Color.Transparent,
+                                shape = CircleShape
+                            )
+                            .clickable { selectedColorHex = hex }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // Bottom Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Cancel")
+                }
+                
+                Button(
+                    onClick = {
+                        val parsedStep = stepSizeStr.toIntOrNull() ?: 1
+                        if (name.trim().isEmpty() || parsedStep <= 0) {
+                            if (name.trim().isEmpty()) errorName = true
+                            if (parsedStep <= 0) errorStepSize = true
+                        } else {
+                            val initVal = initialValueStr.toIntOrNull() ?: 0
+                            val currentVal = currentValueStr.toIntOrNull() ?: initVal
+                            val target = targetValueStr.toIntOrNull()
+                            val reset = resetValueStr.toIntOrNull() ?: 0
+                            onSave(
+                                name.trim(),
+                                folderId,
+                                if (counter == null) initVal else currentVal,
+                                parsedStep,
+                                target,
+                                reset,
+                                selectedColorHex,
+                                note.trim(),
+                                quickButtonsStr.trim()
+                            )
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = getColorFromHex(selectedColorHex))
+                ) {
+                    Text("Save", color = Color.White)
+                }
+            }
         }
+    }
+
+    if (showPaletteDialog) {
+        PaletteColorsDialog(
+            initialColorHex = selectedColorHex,
+            onDismiss = { showPaletteDialog = false },
+            onColorSelected = {
+                selectedColorHex = it
+                showPaletteDialog = false
+            }
+        )
+    }
+
+    if (showDeleteConfirmation && onDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Counter") },
+            text = { Text("Are you sure you want to permanently delete \"$name\"?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        onDelete()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete", color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

@@ -77,7 +77,8 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
         targetValue: Int?,
         resetValue: Int,
         colorHex: String,
-        note: String
+        note: String,
+        quickButtons: String
     ) {
         viewModelScope.launch {
             val counter = Counter(
@@ -89,7 +90,8 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
                 targetValue = targetValue,
                 resetValue = resetValue,
                 colorHex = colorHex,
-                note = note
+                note = note,
+                quickButtons = quickButtons
             )
             val newId = repository.insertCounter(counter)
             // Create initial creation log

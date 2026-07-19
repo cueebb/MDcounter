@@ -28,6 +28,7 @@ data class Counter(
     val resetValue: Int = 0,
     val colorHex: String = "#3F51B5",
     val note: String = "",
+    val quickButtons: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val lastModified: Long = System.currentTimeMillis()
 )

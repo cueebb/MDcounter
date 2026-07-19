@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        TranslationManager.initialize(applicationContext)
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -94,9 +95,9 @@ class MainActivity : ComponentActivity() {
 // Preset Colors for folders and counters
 val ColorPresets = listOf(
     "#3F51B5" to "Indigo",
-    "#2E7D32" to "Green",
+    "#2E7D32" to TranslationManager.getString("color_green", "Green"),
     "#EF6C00" to "Orange",
-    "#C62828" to "Red",
+    "#C62828" to TranslationManager.getString("color_red", "Red"),
     "#00838F" to "Teal",
     "#6A1B9A" to "Purple",
     "#AD1457" to "Pink",
@@ -105,14 +106,14 @@ val ColorPresets = listOf(
 
 val ExtendedColorPresets = listOf(
     "#3F51B5" to "Indigo",
-    "#2E7D32" to "Green",
+    "#2E7D32" to TranslationManager.getString("color_green", "Green"),
     "#EF6C00" to "Orange",
-    "#C62828" to "Red",
+    "#C62828" to TranslationManager.getString("color_red", "Red"),
     "#00838F" to "Teal",
     "#6A1B9A" to "Purple",
     "#AD1457" to "Pink",
     "#455A64" to "Slate Blue",
-    "#1E88E5" to "Blue",
+    "#1E88E5" to TranslationManager.getString("color_blue", "Blue"),
     "#00ACC1" to "Cyan",
     "#00897B" to "Teal Accent",
     "#43A047" to "Green Accent",
@@ -188,6 +189,7 @@ fun CounterAppScreen(
     var isAutosortEnabled by remember { mutableStateOf(false) }
     var autosortIntervalSeconds by remember { mutableStateOf(5) }
     var manualOrderIds by remember { mutableStateOf<List<Long>?>(null) }
+    var showLanguageDialog by remember { mutableStateOf(false) }
 
     // Helper to calculate sorted IDs
     val performSort: (String, Boolean) -> Unit = { param, reverse ->
@@ -362,23 +364,23 @@ fun CounterAppScreen(
                                 .width(240.dp)
                                 .background(MaterialTheme.colorScheme.surface)
                         ) {
-                            // Top item: Settings (Placeholder for now)
+                            // Top item: Language
                             DropdownMenuItem(
                                 text = { 
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         Icon(
-                                            imageVector = Icons.Default.Settings,
+                                            imageVector = Icons.Default.Settings, // Settings icon used for Language config
                                             contentDescription = null,
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
-                                        Text("Settings (Placeholder)", fontWeight = FontWeight.Bold)
+                                        Text(TranslationManager.getString("language", "Language"), fontWeight = FontWeight.Bold)
                                     }
                                 },
                                 onClick = {
                                     showMoreDropdown = false
-                                    Toast.makeText(context, "Settings fully configured per counter/folder!", Toast.LENGTH_SHORT).show()
+                                    showLanguageDialog = true
                                 }
                             )
 
@@ -398,7 +400,7 @@ fun CounterAppScreen(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Spacer(modifier = Modifier.width(10.dp))
-                                        Text("Create Folder", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
+                                        Text(TranslationManager.getString("create_folder", "Create Folder"), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.SemiBold)
                                     }
                                 },
                                 onClick = {
@@ -414,7 +416,7 @@ fun CounterAppScreen(
 
                             // Title for Folders List
                             Text(
-                                text = "Switch Folders (Hold to Edit)",
+                                text = TranslationManager.getString("switch_folders_hint", "Switch Folders (Hold to Edit)"),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
@@ -450,7 +452,7 @@ fun CounterAppScreen(
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "All Counters",
+                                    text = TranslationManager.getString("all_counters", "All Counters"),
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = if (selectedFolderId == null) FontWeight.Bold else FontWeight.Normal,
                                     color = MaterialTheme.colorScheme.onSurface,
@@ -539,7 +541,7 @@ fun CounterAppScreen(
                                 .then(
                                     if (currentFolder != null) {
                                         Modifier.clickable {
-                                            historyViewTarget = Pair(null, currentFolder)
+                                            folderToEdit = currentFolder
                                         }
                                     } else {
                                         Modifier
@@ -556,7 +558,7 @@ fun CounterAppScreen(
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = currentFolder?.name ?: "All Counters",
+                            text = currentFolder?.name ?: TranslationManager.getString("all_counters", "All Counters"),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
@@ -588,7 +590,7 @@ fun CounterAppScreen(
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Sort,
-                                    contentDescription = "Sort Counters",
+                                    contentDescription = TranslationManager.getString("sort_counters", "Sort Counters"),
                                     tint = activeColor,
                                     modifier = Modifier.size(26.dp)
                                 )
@@ -619,7 +621,7 @@ fun CounterAppScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(
-                                    text = "Folder Info",
+                                    text = TranslationManager.getString("folder_info", "Folder Info"),
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold,
                                     color = activeColor
@@ -631,8 +633,8 @@ fun CounterAppScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Counters", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text("$totalCountersCount active", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                    Text(TranslationManager.getString("counters", "Counters"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("$totalCountersCount " + TranslationManager.getString("active", "active"), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                 }
 
                                 Row(
@@ -640,12 +642,12 @@ fun CounterAppScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Accumulated", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(TranslationManager.getString("accumulated", "Accumulated"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     Text("$totalAccumulatedClicks", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                                 }
 
                                 Text(
-                                    text = "Log values, manage folders, and trace board game or task progress.",
+                                    text = TranslationManager.getString("folder_info_desc", "Log values, manage folders, and trace board game or task progress."),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
                                     lineHeight = 14.sp,
@@ -687,7 +689,7 @@ fun CounterAppScreen(
                         }
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = "No counters found",
+                            text = TranslationManager.getString("no_counters_found", "No counters found"),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -695,9 +697,9 @@ fun CounterAppScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = if (currentFolder != null) {
-                                "Add a new counter to this folder to get started."
+                                TranslationManager.getString("folder_empty_hint", "Add a new counter to this folder to get started.")
                             } else {
-                                "Create customizable counters with step goals, colors, and notes."
+                                TranslationManager.getString("global_empty_hint", "Create customizable counters with step goals, colors, and notes.")
                             },
                             style = MaterialTheme.typography.bodySmall,
                             textAlign = TextAlign.Center,
@@ -712,7 +714,7 @@ fun CounterAppScreen(
                         ) {
                             Icon(imageVector = Icons.Default.Add, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Add Counter")
+                            Text(TranslationManager.getString("add_counter", "Add Counter"))
                         }
                     }
                 }
@@ -758,7 +760,7 @@ fun CounterAppScreen(
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
-                contentDescription = "Create Counter",
+                contentDescription = TranslationManager.getString("create_counter", "Create Counter"),
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -766,6 +768,13 @@ fun CounterAppScreen(
     } // Closing of else block for full-screen interceptor
 
     // Modal Dialogs
+    if (showLanguageDialog) {
+        LanguageDialog(
+            onDismiss = { showLanguageDialog = false },
+            context = context
+        )
+    }
+
     if (showAddFolderDialog) {
         AddEditFolderDialog(
             folder = null,
@@ -937,7 +946,7 @@ fun CounterCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
-                            contentDescription = "Duplicate Counter",
+                            contentDescription = TranslationManager.getString("duplicate_counter", "Duplicate Counter"),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
                         )
@@ -1033,7 +1042,7 @@ fun CounterCard(
                 )
             }
 
-            // Quick Action Buttons Row (divided by space, e.g. "-10 -5 +5 +10")
+            // Quick Action Buttons Row (divided by space, e.g. TranslationManager.getString("quick_buttons_placeholder", "-10 -5 +5 +10"))
             val quickButtonsList = remember(counter.quickButtons) {
                 counter.quickButtons.split("\\s+".toRegex())
                     .mapNotNull { it.trim().toIntOrNull() }
@@ -1106,7 +1115,7 @@ fun CounterCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Goal Progress: ${(progress * 100).toInt()}%",
+                            text = TranslationManager.getString("goal_progress", "Goal Progress: %d%%").format((progress * 100).toInt()),
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1196,7 +1205,7 @@ fun QolAdjustDialog(
             ) {
                 // Title
                 Text(
-                    text = "Quick Adjust: ${counter.name}",
+                    text = TranslationManager.getString("quick_adjust_title", "Quick Adjust: %s").format(counter.name),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -1232,7 +1241,7 @@ fun QolAdjustDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "Decrease",
+                                TranslationManager.getString("decrease", "Decrease"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = subContent
@@ -1262,7 +1271,7 @@ fun QolAdjustDialog(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                "Add",
+                                TranslationManager.getString("add", "Add"),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold,
                                 color = addContent
@@ -1285,7 +1294,7 @@ fun QolAdjustDialog(
                             isError = intVal == null || intVal <= 0
                         }
                     },
-                    label = { Text("How many points?") },
+                    label = { Text(TranslationManager.getString("how_many_points", "How many points?")) },
                     placeholder = { Text(counter.stepSize.toString()) },
                     isError = isError,
                     singleLine = true,
@@ -1298,7 +1307,7 @@ fun QolAdjustDialog(
 
                 if (isError) {
                     Text(
-                        text = "Please enter a valid positive number",
+                        text = TranslationManager.getString("invalid_positive_number", "Please enter a valid positive number"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier
@@ -1315,7 +1324,7 @@ fun QolAdjustDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(TranslationManager.getString("cancel", "Cancel"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
@@ -1335,7 +1344,7 @@ fun QolAdjustDialog(
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.testTag("adjust_apply_button")
                     ) {
-                        Text("Apply", color = Color.White)
+                        Text(TranslationManager.getString("apply", "Apply"), color = Color.White)
                     }
                 }
             }
@@ -1377,7 +1386,7 @@ fun CustomColorPickerDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "Custom Color Picker",
+                    text = TranslationManager.getString("custom_color_picker", "Custom Color Picker"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1412,7 +1421,7 @@ fun CustomColorPickerDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Red", style = MaterialTheme.typography.bodySmall, color = Color.Red, fontWeight = FontWeight.Bold)
+                        Text(TranslationManager.getString("color_red", "Red"), style = MaterialTheme.typography.bodySmall, color = Color.Red, fontWeight = FontWeight.Bold)
                         Text("${r.toInt()}", style = MaterialTheme.typography.bodySmall)
                     }
                     Slider(
@@ -1432,7 +1441,7 @@ fun CustomColorPickerDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Green", style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
+                        Text(TranslationManager.getString("color_green", "Green"), style = MaterialTheme.typography.bodySmall, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
                         Text("${g.toInt()}", style = MaterialTheme.typography.bodySmall)
                     }
                     Slider(
@@ -1452,7 +1461,7 @@ fun CustomColorPickerDialog(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Blue", style = MaterialTheme.typography.bodySmall, color = Color.Blue, fontWeight = FontWeight.Bold)
+                        Text(TranslationManager.getString("color_blue", "Blue"), style = MaterialTheme.typography.bodySmall, color = Color.Blue, fontWeight = FontWeight.Bold)
                         Text("${b.toInt()}", style = MaterialTheme.typography.bodySmall)
                     }
                     Slider(
@@ -1473,14 +1482,78 @@ fun CustomColorPickerDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(TranslationManager.getString("cancel", "Cancel"))
                     }
                     Spacer(modifier = Modifier.width(12.dp))
                     Button(
                         onClick = { onColorSelected(selectedHex) },
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Select")
+                        Text(TranslationManager.getString("select", "Select"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun LanguageDialog(
+    onDismiss: () -> Unit,
+    context: android.content.Context
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = TranslationManager.getString("select_language", "Select Language"),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                LazyColumn {
+                    items(TranslationManager.supportedLanguages) { (code, name) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    TranslationManager.setLanguage(context, code)
+                                    onDismiss()
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = name,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = if (TranslationManager.currentLanguage == code) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                            if (TranslationManager.currentLanguage == code) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(TranslationManager.getString("cancel", "Cancel"))
                     }
                 }
             }
@@ -1517,7 +1590,7 @@ fun PaletteColorsDialog(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "Material 3 Palette Colors",
+                        text = TranslationManager.getString("material_3_palette", "Material 3 Palette Colors"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -1566,17 +1639,17 @@ fun PaletteColorsDialog(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.ColorLens,
-                                contentDescription = "Custom Color Picker",
+                                contentDescription = TranslationManager.getString("custom_color_picker", "Custom Color Picker"),
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Custom Picker")
+                            Text(TranslationManager.getString("custom_picker", "Custom Picker"))
                         }
 
                         TextButton(
                             onClick = onDismiss
                         ) {
-                            Text("Close")
+                            Text(TranslationManager.getString("close", "Close"))
                         }
                     }
                 }
@@ -1636,7 +1709,7 @@ fun AddEditFolderDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = if (folder == null) "Create Folder" else "Folder Settings",
+                    text = if (folder == null) TranslationManager.getString("create_folder", "Create Folder") else TranslationManager.getString("folder_settings", "Folder Settings"),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1650,7 +1723,7 @@ fun AddEditFolderDialog(
                         name = it
                         errorName = it.trim().isEmpty()
                     },
-                    label = { Text("Folder Name") },
+                    label = { Text(TranslationManager.getString("folder_name", "Folder Name")) },
                     isError = errorName,
                     singleLine = true,
                     modifier = Modifier
@@ -1660,7 +1733,7 @@ fun AddEditFolderDialog(
                 )
                 if (errorName) {
                     Text(
-                        text = "Folder name cannot be empty",
+                        text = TranslationManager.getString("empty_folder_name", "Folder name cannot be empty"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(start = 8.dp, top = 4.dp)
@@ -1671,7 +1744,7 @@ fun AddEditFolderDialog(
 
                 // Accent Color Selector
                 Text(
-                    text = "Select Accent Color",
+                    text = TranslationManager.getString("select_accent_color", "Select Accent Color"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1743,7 +1816,7 @@ fun AddEditFolderDialog(
 
                 // Icon Selector
                 Text(
-                    text = "Select Folder Icon",
+                    text = TranslationManager.getString("select_folder_icon", "Select Folder Icon"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1792,13 +1865,13 @@ fun AddEditFolderDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Smart Folder Settings",
+                            text = TranslationManager.getString("smart_folder_settings", "Smart Folder Settings"),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Auto-fill counter values & bulk edit matching settings",
+                            text = TranslationManager.getString("smart_folder_settings_desc", "Auto-fill counter values & bulk edit matching settings"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1823,7 +1896,7 @@ fun AddEditFolderDialog(
                                 val parsed = it.toIntOrNull()
                                 errorStepSize = parsed == null || parsed <= 0
                             },
-                            label = { Text("Default Step") },
+                            label = { Text(TranslationManager.getString("default_step", "Default Step")) },
                             isError = errorStepSize,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -1834,7 +1907,7 @@ fun AddEditFolderDialog(
                         OutlinedTextField(
                             value = defaultResetValueStr,
                             onValueChange = { defaultResetValueStr = it },
-                            label = { Text("Default Reset To") },
+                            label = { Text(TranslationManager.getString("default_reset_to", "Default Reset To")) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             modifier = Modifier.weight(1f),
@@ -1844,7 +1917,7 @@ fun AddEditFolderDialog(
 
                     if (errorStepSize) {
                         Text(
-                            text = "Step size must be a positive number",
+                            text = TranslationManager.getString("invalid_step_size", "Step size must be a positive number"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 8.dp, top = 4.dp)
@@ -1856,7 +1929,7 @@ fun AddEditFolderDialog(
                     OutlinedTextField(
                         value = defaultTargetValueStr,
                         onValueChange = { defaultTargetValueStr = it },
-                        label = { Text("Default Goal Target (Optional)") },
+                        label = { Text(TranslationManager.getString("default_goal_target", "Default Goal Target (Optional)")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
@@ -1872,10 +1945,10 @@ fun AddEditFolderDialog(
                                 defaultQuickButtonsStr = newValue
                             }
                         },
-                        label = { Text("Default Quick Buttons") },
-                        placeholder = { Text("e.g. -10 -5 +5 +10") },
+                        label = { Text(TranslationManager.getString("default_quick_buttons", "Default Quick Buttons")) },
+                        placeholder = { Text(TranslationManager.getString("quick_buttons_placeholder", "e.g. -10 -5 +5 +10")) },
                         supportingText = {
-                            Text("Only numbers and spaces are allowed.")
+                            Text(TranslationManager.getString("numbers_spaces_allowed", "Only numbers and spaces are allowed."))
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -1892,10 +1965,10 @@ fun AddEditFolderDialog(
                                 historyDividerThresholdStr = newValue
                             }
                         },
-                        label = { Text("History Divider Interval (seconds)") },
-                        placeholder = { Text("e.g. 1.5 or 10") },
+                        label = { Text(TranslationManager.getString("history_divider_interval", "History Divider Interval (seconds)")) },
+                        placeholder = { Text(TranslationManager.getString("divider_placeholder", "e.g. 1.5 or 10")) },
                         supportingText = {
-                            Text("Thin divider added to history if inactive for X seconds. 0 to disable.")
+                            Text(TranslationManager.getString("divider_hint", "Thin divider added to history if inactive for X seconds. 0 to disable."))
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -1919,7 +1992,7 @@ fun AddEditFolderDialog(
                         ) {
                             Icon(imageVector = Icons.Outlined.Delete, contentDescription = null)
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("DELETE")
+                            Text(TranslationManager.getString("delete_upper", "DELETE"))
                         }
                     } else {
                         Spacer(modifier = Modifier.weight(1f))
@@ -1927,7 +2000,7 @@ fun AddEditFolderDialog(
 
                     Row {
                         TextButton(onClick = onDismiss) {
-                            Text("Cancel")
+                            Text(TranslationManager.getString("cancel", "Cancel"))
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         Button(
@@ -1954,7 +2027,7 @@ fun AddEditFolderDialog(
                             },
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Save")
+                            Text(TranslationManager.getString("save", "Save"))
                         }
                     }
                 }
@@ -2008,7 +2081,7 @@ fun SortDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "Sort Counters",
+                    text = TranslationManager.getString("sort_counters", "Sort Counters"),
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -2018,7 +2091,7 @@ fun SortDialog(
 
                 // Param selection
                 Text(
-                    text = "Sort By",
+                    text = TranslationManager.getString("sort_by", "Sort By"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -2026,10 +2099,10 @@ fun SortDialog(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val options = listOf(
-                    "quantity" to "Quantity / Current Value",
-                    "createdAt" to "Date of Creation",
-                    "lastModified" to "Date of Change",
-                    "name" to "Name"
+                    "quantity" to TranslationManager.getString("sort_quantity", "Quantity / Current Value"),
+                    "createdAt" to TranslationManager.getString("sort_created_at", "Date of Creation"),
+                    "lastModified" to TranslationManager.getString("sort_last_modified", "Date of Change"),
+                    "name" to TranslationManager.getString("sort_name", "Name")
                 )
 
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -2075,12 +2148,12 @@ fun SortDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "Reverse Sorting",
+                            text = TranslationManager.getString("reverse_sorting", "Reverse Sorting"),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = if (reverseSort) "From least to greatest" else "From greatest to least (Default)",
+                            text = if (reverseSort) TranslationManager.getString("sort_least_to_greatest", "From least to greatest") else TranslationManager.getString("sort_greatest_to_least", "From greatest to least (Default)"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2105,12 +2178,12 @@ fun SortDialog(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "Auto-sort",
+                            text = TranslationManager.getString("auto_sort", "Auto-sort"),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Keep counters sorted automatically over time",
+                            text = TranslationManager.getString("auto_sort_desc", "Keep counters sorted automatically over time"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -2126,7 +2199,7 @@ fun SortDialog(
                             val parsed = it.toIntOrNull()
                             errorInterval = parsed == null || parsed <= 0
                         },
-                        label = { Text("Auto-sort interval (seconds)") },
+                        label = { Text(TranslationManager.getString("auto_sort_interval", "Auto-sort interval (seconds)")) },
                         isError = errorInterval,
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -2135,7 +2208,7 @@ fun SortDialog(
                     )
                     if (errorInterval) {
                         Text(
-                            text = "Interval must be a positive number",
+                            text = TranslationManager.getString("invalid_interval", "Interval must be a positive number"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                             modifier = Modifier.padding(start = 8.dp, top = 4.dp)
@@ -2150,7 +2223,7 @@ fun SortDialog(
                     horizontalArrangement = Arrangement.End
                 ) {
                     TextButton(onClick = onDismiss) {
-                        Text("Cancel")
+                        Text(TranslationManager.getString("cancel", "Cancel"))
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
@@ -2163,7 +2236,7 @@ fun SortDialog(
                         shape = RoundedCornerShape(12.dp),
                         enabled = !autosortEnabled || (!errorInterval && autosortIntervalStr.isNotEmpty())
                     ) {
-                        Text("Apply")
+                        Text(TranslationManager.getString("apply", "Apply"))
                     }
                 }
             }
@@ -2247,7 +2320,7 @@ fun AddEditCounterScreen(
                         IconButton(onClick = { showDeleteConfirmation = true }) {
                             Icon(
                                 imageVector = Icons.Outlined.Delete,
-                                contentDescription = "Delete Counter",
+                                contentDescription = TranslationManager.getString("delete_counter", "Delete Counter"),
                                 tint = MaterialTheme.colorScheme.error
                             )
                         }
@@ -2275,7 +2348,7 @@ fun AddEditCounterScreen(
                     name = it
                     errorName = it.trim().isEmpty()
                 },
-                label = { Text("Counter Title") },
+                label = { Text(TranslationManager.getString("counter_title", "Counter Title")) },
                 isError = errorName,
                 singleLine = true,
                 modifier = Modifier
@@ -2285,7 +2358,7 @@ fun AddEditCounterScreen(
             )
             if (errorName) {
                 Text(
-                    text = "Title is required",
+                    text = TranslationManager.getString("title_required", "Title is required"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(start = 8.dp, top = 4.dp)
@@ -2302,10 +2375,10 @@ fun AddEditCounterScreen(
             ) {
                 val currentFolder = folders.find { it.id == folderId }
                 OutlinedTextField(
-                    value = currentFolder?.name ?: "General / Uncategorized",
+                    value = currentFolder?.name ?: TranslationManager.getString("uncategorized", "General / Uncategorized"),
                     onValueChange = {},
                     readOnly = true,
-                    label = { Text("Folder Category") },
+                    label = { Text(TranslationManager.getString("folder_category", "Folder Category")) },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = folderDropdownExpanded) },
                     modifier = Modifier
                         .menuAnchor()
@@ -2319,7 +2392,7 @@ fun AddEditCounterScreen(
                     onDismissRequest = { folderDropdownExpanded = false }
                 ) {
                     DropdownMenuItem(
-                        text = { Text("General / Uncategorized") },
+                        text = { Text(TranslationManager.getString("uncategorized", "General / Uncategorized")) },
                         onClick = {
                             folderId = null
                             folderDropdownExpanded = false
@@ -2351,7 +2424,7 @@ fun AddEditCounterScreen(
                         val parsed = it.toIntOrNull()
                         errorStepSize = parsed == null || parsed <= 0
                     },
-                    label = { Text("Step Size") },
+                    label = { Text(TranslationManager.getString("step_size", "Step Size")) },
                     isError = errorStepSize,
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -2364,7 +2437,7 @@ fun AddEditCounterScreen(
                 OutlinedTextField(
                     value = resetValueStr,
                     onValueChange = { resetValueStr = it },
-                    label = { Text("Reset To") },
+                    label = { Text(TranslationManager.getString("reset_to", "Reset To")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -2373,7 +2446,7 @@ fun AddEditCounterScreen(
             }
             if (errorStepSize) {
                 Text(
-                    text = "Step size must be a positive number",
+                    text = TranslationManager.getString("invalid_step_size", "Step size must be a positive number"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(start = 8.dp, top = 4.dp)
@@ -2391,7 +2464,7 @@ fun AddEditCounterScreen(
                     OutlinedTextField(
                         value = initialValueStr,
                         onValueChange = { initialValueStr = it },
-                        label = { Text("Initial Value") },
+                        label = { Text(TranslationManager.getString("initial_value", "Initial Value")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f),
@@ -2401,7 +2474,7 @@ fun AddEditCounterScreen(
                     OutlinedTextField(
                         value = currentValueStr,
                         onValueChange = { currentValueStr = it },
-                        label = { Text("Current Count") },
+                        label = { Text(TranslationManager.getString("current_count", "Current Count")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f),
@@ -2412,7 +2485,7 @@ fun AddEditCounterScreen(
                 OutlinedTextField(
                     value = targetValueStr,
                     onValueChange = { targetValueStr = it },
-                    label = { Text("Goal Target (Optional)") },
+                    label = { Text(TranslationManager.getString("goal_target", "Goal Target (Optional)")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -2426,7 +2499,7 @@ fun AddEditCounterScreen(
             OutlinedTextField(
                 value = note,
                 onValueChange = { note = it },
-                label = { Text("Add Description / Note (Optional)") },
+                label = { Text(TranslationManager.getString("add_description", "Add Description / Note (Optional)")) },
                 maxLines = 3,
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
@@ -2442,10 +2515,10 @@ fun AddEditCounterScreen(
                         quickButtonsStr = newValue
                     }
                 },
-                label = { Text("Quick Buttons") },
-                placeholder = { Text("-10 -5 +5 +10") },
+                label = { Text(TranslationManager.getString("quick_buttons", "Quick Buttons")) },
+                placeholder = { Text(TranslationManager.getString("quick_buttons_placeholder", "-10 -5 +5 +10")) },
                 supportingText = {
-                    Text("Enter numbers separated by spaces. Prefix with - to subtract.")
+                    Text(TranslationManager.getString("quick_buttons_hint", "Enter numbers separated by spaces. Prefix with - to subtract."))
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
@@ -2463,10 +2536,10 @@ fun AddEditCounterScreen(
                         historyDividerThresholdStr = newValue
                     }
                 },
-                label = { Text("History Divider Interval (seconds)") },
-                placeholder = { Text("e.g. 1.5 or 10") },
+                label = { Text(TranslationManager.getString("history_divider_interval", "History Divider Interval (seconds)")) },
+                placeholder = { Text(TranslationManager.getString("divider_placeholder", "e.g. 1.5 or 10")) },
                 supportingText = {
-                    Text("Thin divider added to history if inactive for X seconds. Set 0 to disable.")
+                    Text(TranslationManager.getString("divider_hint2", "Thin divider added to history if inactive for X seconds. Set 0 to disable."))
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
@@ -2478,7 +2551,7 @@ fun AddEditCounterScreen(
 
             // Visual Preset Color picker
             Text(
-                text = "Select Counter Card Color",
+                text = TranslationManager.getString("select_counter_color", "Select Counter Card Color"),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -2558,7 +2631,7 @@ fun AddEditCounterScreen(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Cancel")
+                    Text(TranslationManager.getString("cancel", "Cancel"))
                 }
                 
                 Button(
@@ -2591,7 +2664,7 @@ fun AddEditCounterScreen(
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = getColorFromHex(selectedColorHex))
                 ) {
-                    Text("Save", color = Color.White)
+                    Text(TranslationManager.getString("save", "Save"), color = Color.White)
                 }
             }
         }
@@ -2611,8 +2684,8 @@ fun AddEditCounterScreen(
     if (showDeleteConfirmation && onDelete != null) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
-            title = { Text("Delete Counter") },
-            text = { Text("Are you sure you want to permanently delete \"$name\"?") },
+            title = { Text(TranslationManager.getString("delete_counter", "Delete Counter")) },
+            text = { Text(TranslationManager.getString("delete_confirm", "Are you sure you want to permanently delete \"%s\"?").format(name)) },
             confirmButton = {
                 Button(
                     onClick = {
@@ -2621,12 +2694,12 @@ fun AddEditCounterScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                 ) {
-                    Text("Delete", color = Color.White)
+                    Text(TranslationManager.getString("delete", "Delete"), color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmation = false }) {
-                    Text("Cancel")
+                    Text(TranslationManager.getString("cancel", "Cancel"))
                 }
             }
         )
@@ -2676,7 +2749,7 @@ fun CounterLogsSheetDialog(
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Timeline & Activity Log",
+                            text = TranslationManager.getString("timeline_activity_log", "Timeline & Activity Log"),
                             style = MaterialTheme.typography.labelMedium,
                             color = counterColor,
                             fontWeight = FontWeight.SemiBold
@@ -2690,7 +2763,7 @@ fun CounterLogsSheetDialog(
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Text(
-                            text = "Current: ${counter.currentValue}",
+                            text = TranslationManager.getString("current_value_label", "Current: %d").format(counter.currentValue),
                             style = MaterialTheme.typography.labelMedium,
                             color = counterColor,
                             fontWeight = FontWeight.Bold
@@ -2721,7 +2794,7 @@ fun CounterLogsSheetDialog(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "No log changes registered yet.",
+                                text = TranslationManager.getString("no_log_changes", "No log changes registered yet."),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -2752,7 +2825,7 @@ fun CounterLogsSheetDialog(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 ) {
-                    Text("Close Timeline", fontWeight = FontWeight.Bold)
+                    Text(TranslationManager.getString("close_timeline", "Close Timeline"), fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -2801,7 +2874,7 @@ fun LogItem(
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Path: ${log.previousValue} ➔ ${log.newValue}",
+                    text = TranslationManager.getString("log_path", "Path: %d ➔ %d").format(log.previousValue, log.newValue),
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = FontFamily.Monospace,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -2859,9 +2932,9 @@ fun FullScreenHistoryView(
                 title = {
                     Text(
                         text = when {
-                            targetCounter != null -> "History: ${targetCounter.name}"
-                            targetFolder != null -> "Folder History: ${targetFolder.name}"
-                            else -> "All History Logs"
+                            targetCounter != null -> TranslationManager.getString("history_counter", "History: %s").format(targetCounter.name)
+                            targetFolder != null -> TranslationManager.getString("history_folder", "Folder History: %s").format(targetFolder.name)
+                            else -> TranslationManager.getString("all_history_logs", "All History Logs")
                         },
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -2887,7 +2960,7 @@ fun FullScreenHistoryView(
                                     viewModel.insertManualDivider(targetCounter.id, isGlobal = false)
                                     android.widget.Toast.makeText(
                                         context,
-                                        "Local divider added for ${targetCounter.name}!",
+                                        TranslationManager.getString("local_divider_added", "Local divider added for %s!").format(targetCounter.name),
                                         android.widget.Toast.LENGTH_SHORT
                                     ).show()
                                 } else if (targetFolder != null) {
@@ -2898,13 +2971,13 @@ fun FullScreenHistoryView(
                                         }
                                         android.widget.Toast.makeText(
                                             context,
-                                            "Local divider added for counters in ${targetFolder.name}!",
+                                            TranslationManager.getString("folder_divider_added", "Local divider added for counters in %s!").format(targetFolder.name),
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
                                     } else {
                                         android.widget.Toast.makeText(
                                             context,
-                                            "No counters in this folder to add divider to!",
+                                            TranslationManager.getString("no_counters_divider", "No counters in this folder to add divider to!"),
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -2914,7 +2987,7 @@ fun FullScreenHistoryView(
                                         viewModel.insertManualDivider(firstCounter.id, isGlobal = false)
                                         android.widget.Toast.makeText(
                                             context,
-                                            "Local divider added for ${firstCounter.name}!",
+                                            TranslationManager.getString("local_divider_added", "Local divider added for %s!").format(firstCounter.name),
                                             android.widget.Toast.LENGTH_SHORT
                                         ).show()
                                     }
@@ -2924,7 +2997,7 @@ fun FullScreenHistoryView(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Remove,
-                                contentDescription = "Add Local Divider"
+                                contentDescription = TranslationManager.getString("add_local_divider", "Add Local Divider")
                             )
                         }
                     }
@@ -2936,7 +3009,7 @@ fun FullScreenHistoryView(
                                 viewModel.insertGlobalDivider(allCounters)
                                 android.widget.Toast.makeText(
                                     context,
-                                    "Global divider added to all counters & folder histories!",
+                                    TranslationManager.getString("global_divider_added", "Global divider added to all counters & folder histories!"),
                                     android.widget.Toast.LENGTH_SHORT
                                 ).show()
                             },
@@ -2944,7 +3017,7 @@ fun FullScreenHistoryView(
                         ) {
                             Icon(
                                 imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = "Add Global Divider"
+                                contentDescription = TranslationManager.getString("add_global_divider", "Add Global Divider")
                             )
                         }
                     }
@@ -2964,7 +3037,7 @@ fun FullScreenHistoryView(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "No history records found",
+                    text = TranslationManager.getString("no_history_records_found", "No history records found"),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -2990,7 +3063,7 @@ fun FullScreenHistoryView(
 
                     Column {
                         if (isManualDividerLocal || isManualDividerGlobal) {
-                            val dividerLabel = if (isManualDividerLocal) "Manual Divider" else "Global Manual Divider"
+                            val dividerLabel = if (isManualDividerLocal) TranslationManager.getString("manual_divider", "Manual Divider") else TranslationManager.getString("global_manual_divider", "Global Manual Divider")
                             val stripeColor = if (isManualDividerLocal) {
                                 counterColor
                             } else {
@@ -3075,7 +3148,7 @@ fun FullScreenHistoryView(
                                             text = try {
                                                 dateFormat.format(java.util.Date(log.timestamp))
                                             } catch (e: Exception) {
-                                                "Unknown date"
+                                                TranslationManager.getString("unknown_date", "Unknown date")
                                             },
                                             style = MaterialTheme.typography.bodySmall,
                                             color = Color.LightGray
@@ -3100,7 +3173,7 @@ fun FullScreenHistoryView(
                                         val badgeColor = if (isPositive) Color(0xFF4CAF50) else Color(0xFFEF5350)
                                         
                                         Text(
-                                            text = "Path: ${log.previousValue} ➔ ${log.newValue}",
+                                            text = TranslationManager.getString("log_path", "Path: %d ➔ %d").format(log.previousValue, log.newValue),
                                             style = MaterialTheme.typography.bodySmall,
                                             fontFamily = FontFamily.Monospace,
                                             color = Color.LightGray
@@ -3148,7 +3221,7 @@ fun FullScreenHistoryView(
                                     ) {
                                         Box(modifier = Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
                                         Text(
-                                            text = " Inactivity: ${String.format("%.1f", timeDiffSec)}s (Limit: ${threshold}s) ",
+                                            text = TranslationManager.getString("inactivity_limit_format", " Inactivity: %ss (Limit: %ss) ").format(String.format("%.1f", timeDiffSec), threshold),
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,

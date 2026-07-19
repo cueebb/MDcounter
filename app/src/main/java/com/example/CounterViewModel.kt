@@ -164,7 +164,7 @@ class CounterViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             val duplicated = Counter(
                 folderId = counter.folderId,
-                name = "${counter.name} (Copy)",
+                name = TranslationManager.getString("copy_postfix", "%s (Copy)").format(counter.name),
                 currentValue = counter.currentValue,
                 initialValue = counter.initialValue,
                 stepSize = counter.stepSize,

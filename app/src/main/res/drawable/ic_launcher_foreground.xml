@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    
+    <!-- Centered "+1" design inside the 66dp safe zone (radius 34 from center 54,54) -->
+    
+    <!-- Outer thick soft ring -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:strokeLineCap="round"
+        android:pathData="M 54,20 A 34,34 0 1 1 53.9,20 Z" />
+
+    <!-- Plus sign (+) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M 36,54 L 50,54 M 43,47 L 43,61" />
+
+    <!-- Number One (1) -->
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M 58,48 L 65,42 L 65,68 M 59,68 L 71,68" />
+</vector>
